@@ -1,0 +1,10 @@
+Hello {{ user.username }},
+
+Welcome! Please verify your email address by clicking the link below:
+
+{{ protocol }}://{{ domain }}/{{ url }}
+
+This verification link will expire soon, so please verify your email as soon as possible.
+
+Thanks,
+The Team

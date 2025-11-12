@@ -17,8 +17,10 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
-    # Djoser authentication endpoints under /auth/ prefix
-    path('auth/', include('djoser.urls')),
+    # Custom Djoser endpoints with JWT token blacklisting
+    path('auth/', include('users.urls')),
+
+    # Djoser JWT endpoints
     path('auth/', include('djoser.urls.jwt')),
 
     # Custom logout endpoint with token blacklisting

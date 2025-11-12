@@ -115,6 +115,25 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# Password Management Configuration
+# Password reset token expiration time in seconds (24 hours default)
+PASSWORD_RESET_TIMEOUT = config('PASSWORD_RESET_TIMEOUT', default=86400, cast=int)
+
+# Frontend URL for constructing password reset and email verification links
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+# Email verification enforcement setting
+REQUIRE_EMAIL_VERIFICATION = config('REQUIRE_EMAIL_VERIFICATION', default=False, cast=bool)
+
+# JWT token blacklisting on password change (optional, default: False)
+# When True, all JWT tokens are blacklisted when user changes password
+BLACKLIST_TOKENS_ON_PASSWORD_CHANGE = config('BLACKLIST_TOKENS_ON_PASSWORD_CHANGE', default=False, cast=bool)
+
+# Email 2FA enforcement setting (placeholder for future roadmap item 7)
+# This setting is reserved for future multi-factor authentication implementation
+EMAIL_2FA_ENFORCEMENT = config('EMAIL_2FA_ENFORCEMENT', default=False, cast=bool)
+
+
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
@@ -177,12 +196,12 @@ SIMPLE_JWT = {
 DJOSER = {
     'SEND_ACTIVATION_EMAIL': config('SEND_ACTIVATION_EMAIL', default=True, cast=bool),
     'SEND_CONFIRMATION_EMAIL': False,
+    'PASSWORD_CHANGED_EMAIL_CONFIRMATION': True,
     'ACTIVATION_URL': 'activate/{uid}/{token}',
     'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',
     'USERNAME_RESET_CONFIRM_URL': 'username/reset/confirm/{uid}/{token}',
     'USER_CREATE_PASSWORD_RETYPE': False,
     'SET_PASSWORD_RETYPE': False,
-    'PASSWORD_CHANGED_EMAIL_CONFIRMATION': False,
     'USERNAME_CHANGED_EMAIL_CONFIRMATION': False,
     'LOGIN_FIELD': 'email',
     'TOKEN_MODEL': None,  # Using JWT instead of Djoser tokens
