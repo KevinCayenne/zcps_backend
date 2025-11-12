@@ -1,0 +1,14 @@
+# Django and Core
+Django==4.2.11
+python-decouple==3.8
+
+# Django REST Framework
+djangorestframework==3.14.0
+
+# Authentication
+djoser==2.2.2
+djangorestframework-simplejwt==5.3.1
+
+# Development and Testing
+pytest==7.4.4
+pytest-django==4.8.0
