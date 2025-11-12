@@ -10,6 +10,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from drf_spectacular.utils import extend_schema
+from .serializers import LogoutSerializer
 
 
 class LogoutView(APIView):
@@ -22,7 +24,15 @@ class LogoutView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = LogoutSerializer
 
+    @extend_schema(
+        request=LogoutSerializer,
+        responses={
+            204: None,
+            400: {'description': 'Bad Request - Invalid or missing refresh token'}
+        }
+    )
     def post(self, request):
         """
         Blacklist the refresh token to log out the user.

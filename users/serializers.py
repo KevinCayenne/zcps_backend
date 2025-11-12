@@ -98,3 +98,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Make the username field accept both username and email
         self.fields[self.username_field] = serializers.CharField()
         self.fields['password'] = serializers.CharField(write_only=True)
+
+
+class LogoutSerializer(serializers.Serializer):
+    """
+    Serializer for logout endpoint.
+
+    Accepts refresh token to blacklist it during logout.
+    """
+
+    refresh = serializers.CharField(
+        required=True,
+        help_text='Refresh token to blacklist'
+    )
