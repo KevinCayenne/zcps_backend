@@ -41,6 +41,7 @@ class EmailOrUsernameModelBackend(ModelBackend):
                 Q(username=username) | Q(email=username)
             )
         except User.DoesNotExist:
+            # Timing attack mitigation technique:
             # Run the default password hasher once to reduce timing
             # difference between existing and non-existing users
             User().set_password(password)
@@ -51,7 +52,7 @@ class EmailOrUsernameModelBackend(ModelBackend):
             return None
 
         # Check the password and return the user if valid
-        if user.check_password(password) and self.user_can_authenticate(user):
+        if user.check_password(password) and self.user_can_authenticate(user): # user.is_active
             return user
 
         return None
