@@ -111,3 +111,156 @@ class LogoutSerializer(serializers.Serializer):
         required=True,
         help_text='Refresh token to blacklist'
     )
+
+
+class TwoFactorEnableSerializer(serializers.Serializer):
+    """
+    Serializer for enabling 2FA on user account.
+
+    Initiates 2FA setup by sending verification code to user's email.
+    """
+    method = serializers.ChoiceField(
+        choices=['email', 'phone'],
+        required=False,
+        help_text='2FA method to enable (email or phone). Defaults to user preference or system default.'
+    )
+
+
+class TwoFactorVerifySetupSerializer(serializers.Serializer):
+    """
+    Serializer for verifying 2FA setup code.
+
+    Validates the 6-digit code sent to user's email during setup.
+    """
+
+    code = serializers.CharField(
+        required=True,
+        min_length=6,
+        max_length=6,
+        help_text='6-digit verification code sent to your email'
+    )
+
+    def validate_code(self, value):
+        """
+        Validate that code contains only digits.
+
+        Args:
+            value: The code string to validate
+
+        Returns:
+            The validated code
+
+        Raises:
+            ValidationError: If code is not numeric
+        """
+        if not value.isdigit():
+            raise serializers.ValidationError('Code must contain only numbers.')
+        return value
+
+
+class TwoFactorDisableSerializer(serializers.Serializer):
+    """
+    Serializer for disabling 2FA on user account.
+
+    Requires password confirmation for security.
+    """
+
+    password = serializers.CharField(
+        required=True,
+        write_only=True,
+        help_text='Current password for confirmation'
+    )
+
+
+class TwoFactorStatusSerializer(serializers.Serializer):
+    """
+    Serializer for 2FA status response.
+
+    Returns whether user has 2FA enabled and setup date.
+    """
+
+    is_2fa_enabled = serializers.BooleanField()
+    twofa_setup_date = serializers.DateTimeField(allow_null=True)
+    preferred_2fa_method = serializers.CharField(allow_null=True, required=False)
+
+
+class TwoFactorVerifyLoginSerializer(serializers.Serializer):
+    """
+    Serializer for verifying 2FA code during login.
+
+    Accepts temporary token and verification code.
+    """
+
+    code = serializers.CharField(
+        required=True,
+        min_length=6,
+        max_length=6,
+        help_text='6-digit verification code sent to your email'
+    )
+
+    def validate_code(self, value):
+        """
+        Validate that code contains only digits.
+
+        Args:
+            value: The code string to validate
+
+        Returns:
+            The validated code
+
+        Raises:
+            ValidationError: If code is not numeric
+        """
+        if not value.isdigit():
+            raise serializers.ValidationError('Code must contain only numbers.')
+        return value
+
+
+class TwoFactorResendSerializer(serializers.Serializer):
+    """
+    Serializer for resending 2FA verification code.
+
+    No input fields needed, code is sent to authenticated user's email.
+    """
+    pass  # No input fields needed
+
+
+class EmailVerificationSendSerializer(serializers.Serializer):
+    """
+    Serializer for sending email verification code.
+
+    No input fields needed, code is sent to authenticated user's email.
+    """
+    pass  # No input fields needed
+
+
+class EmailVerificationVerifySerializer(serializers.Serializer):
+    """
+    Serializer for verifying email with code.
+
+    Validates the 6-digit code sent to user's email.
+    """
+
+    code = serializers.CharField(
+        required=True,
+        min_length=6,
+        max_length=6,
+        help_text='6-digit verification code sent to your email'
+    )
+
+    def validate_code(self, value):
+        """
+        Validate that code contains only digits.
+
+        Args:
+            value: The code string to validate
+
+        Returns:
+            The validated code
+
+        Raises:
+            ValidationError: If code is not numeric
+        """
+        if not value.isdigit():
+            raise serializers.ValidationError('Code must contain only numbers.')
+        return value

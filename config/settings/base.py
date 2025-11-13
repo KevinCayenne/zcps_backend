@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',  # Required by allauth
 
     # Third-party apps
     'drf_spectacular',
@@ -38,6 +39,17 @@ INSTALLED_APPS = [
     'djoser',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'solo',  # Django Solo for singleton models
+
+    # Allauth packages (must come before dj_rest_auth)
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+
+    # dj-rest-auth packages
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
 
     # Local apps
     'users',
@@ -51,6 +63,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',  # Required by allauth
+    'users.middleware.TwoFactorEnforcementMiddleware',  # 2FA enforcement middleware
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -93,6 +107,7 @@ AUTH_USER_MODEL = 'users.User'
 AUTHENTICATION_BACKENDS = [
     'users.backends.EmailOrUsernameModelBackend',
     'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',  # OAuth backend
 ]
 
 
@@ -237,3 +252,65 @@ SPECTACULAR_SETTINGS = {
         }
     ],
 }
+
+
+# Django Sites Framework (required by allauth)
+SITE_ID = 1
+
+
+# Django Allauth Configuration
+SOCIALACCOUNT_AUTO_SIGNUP = True  # Auto-create users on OAuth
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = 'none'  # No email verification for OAuth users
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_USERNAME_REQUIRED = False
+SOCIALACCOUNT_ADAPTER = 'users.oauth_adapters.CustomSocialAccountAdapter'  # Custom adapter
+
+
+# Google OAuth Configuration
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': [
+            'openid',
+            'profile',
+            'email',
+        ],
+        'APP': {
+            'client_id': config('GOOGLE_OAUTH_CLIENT_ID', default=''),
+            'secret': config('GOOGLE_OAUTH_CLIENT_SECRET', default=''),
+            'key': ''
+        },
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        }
+    }
+}
+
+# Google OAuth redirect URLs
+GOOGLE_OAUTH_SUCCESS_REDIRECT_URL = config('GOOGLE_OAUTH_SUCCESS_REDIRECT_URL', default='http://localhost:3000/auth/callback')
+GOOGLE_OAUTH_ERROR_REDIRECT_URL = config('GOOGLE_OAUTH_ERROR_REDIRECT_URL', default='http://localhost:3000/auth/error')
+
+
+# dj-rest-auth Configuration
+REST_USE_JWT = True  # Enable JWT tokens for OAuth
+JWT_AUTH_COOKIE = None  # Use Authorization header instead of cookies
+JWT_AUTH_REFRESH_COOKIE = None
+REST_SESSION_LOGIN = False  # API-only, no session-based auth
+
+REST_AUTH = {
+    'USE_JWT': True,
+    'JWT_AUTH_COOKIE': None,
+    'JWT_AUTH_REFRESH_COOKIE': None,
+    'SESSION_LOGIN': False,
+    'TOKEN_MODEL': None,  # We're using JWT tokens, not DRF tokens
+}
+
+
+# Two-Factor Authentication Configuration
+# DEPRECATED: These settings will be migrated to database-based TwoFactorSettings model
+REQUIRE_2FA_FOR_ALL_USERS = config('REQUIRE_2FA_FOR_ALL_USERS', default=False, cast=bool)
+TWOFACTOR_CODE_EXPIRATION = config('TWOFACTOR_CODE_EXPIRATION', default=600, cast=int)  # 10 minutes
+TWOFACTOR_CODE_LENGTH = config('TWOFACTOR_CODE_LENGTH', default=6, cast=int)
+TWOFACTOR_MAX_FAILED_ATTEMPTS = config('TWOFACTOR_MAX_FAILED_ATTEMPTS', default=5, cast=int)
+TWOFACTOR_TEMPORARY_TOKEN_LIFETIME = config('TWOFACTOR_TEMPORARY_TOKEN_LIFETIME', default=10, cast=int)  # minutes
