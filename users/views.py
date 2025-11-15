@@ -189,7 +189,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='List all users',
+        summary='List all users (Admin only)',
         description="""
         Retrieve a list of all user accounts in the system.
 
@@ -198,21 +198,19 @@ class CustomUserViewSet(UserViewSet):
         - Basic profile information for each user
         - Paginated results (if pagination is enabled)
 
+        **Prerequisites:**
+        - **Admin privileges required** (is_staff=True)
+        - Must be authenticated with admin account
+
         **Common Use Cases:**
         - Admin user management interface
         - User directory/search
         - Analytics and reporting
 
-        **Important Notes:**
-        - May require special permissions (depends on configuration)
-        - Default Djoser configuration may restrict this endpoint
-        - Consider privacy implications when exposing user lists
-        - Pagination recommended for large user bases
-
-        **Security Considerations:**
-        - Typically should be admin-only
-        - May want to filter sensitive user data
-        - Consider rate limiting for public access
+        **Security:**
+        - This endpoint is ADMIN-ONLY
+        - Regular users will receive 403 Forbidden
+        - Use `/auth/users/me/` for current user profile instead
         """,
         examples=[
             OpenApiExample(
@@ -245,7 +243,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Get user by ID',
+        summary='Get user by ID (Admin only)',
         description="""
         Retrieve a specific user's profile information by their user ID.
 
@@ -253,22 +251,27 @@ class CustomUserViewSet(UserViewSet):
         - User ID
         - Email address
         - Username
-        - Other public profile fields
+        - Email verification status
+        - 2FA status
+        - Other profile fields
+
+        **Prerequisites:**
+        - **Admin privileges required** (is_staff=True)
+        - Must be authenticated with admin account
 
         **Common Use Cases:**
-        - Display user profile pages
         - Admin user management
-        - User lookup by ID
+        - User lookup by ID for admin purposes
+        - Customer support
 
         **Important Notes:**
-        - May require special permissions (depends on configuration)
         - Different from `/auth/users/me/` which gets current user
-        - Consider privacy - what fields should be public?
+        - Regular users cannot view other users' profiles
 
-        **Security Considerations:**
-        - Verify permissions before exposing user data
-        - May want to restrict to admins only
-        - Consider what information is public vs private
+        **Security:**
+        - This endpoint is ADMIN-ONLY
+        - Regular users will receive 403 Forbidden
+        - Use `/auth/users/me/` for current user profile instead
         """,
         examples=[
             OpenApiExample(
@@ -297,7 +300,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Update user by ID (full update)',
+        summary='Update user by ID (Admin only - full update)',
         description="""
         Fully update a user's profile information by their user ID (PUT method).
 
@@ -306,22 +309,26 @@ class CustomUserViewSet(UserViewSet):
         - Requires all required fields to be provided
         - Uses PUT method (full replacement)
 
+        **Prerequisites:**
+        - **Admin privileges required** (is_staff=True)
+        - Must be authenticated with admin account
+
         **Common Use Cases:**
         - Admin user management
         - Bulk user updates
         - Profile synchronization
 
         **Important Notes:**
-        - May require admin permissions
         - All required fields must be provided
         - Missing fields will be set to default/null
         - Use PATCH for partial updates instead
-
-        **Security Considerations:**
-        - Should typically be admin-only
-        - Verify permissions before allowing updates
-        - Audit log recommended for user modifications
         - Cannot change password via this endpoint (use set_password)
+
+        **Security:**
+        - This endpoint is ADMIN-ONLY
+        - Regular users will receive 403 Forbidden
+        - Use `/auth/users/me/` to update your own profile
+        - Audit log recommended for user modifications
         """,
         request=inline_serializer(
             name='UserUpdateRequest',
@@ -354,7 +361,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Partially update user by ID',
+        summary='Partially update user by ID (Admin only)',
         description="""
         Partially update a user's profile information by their user ID (PATCH method).
 
@@ -363,13 +370,16 @@ class CustomUserViewSet(UserViewSet):
         - Other fields remain unchanged
         - Uses PATCH method (partial update)
 
+        **Prerequisites:**
+        - **Admin privileges required** (is_staff=True)
+        - Must be authenticated with admin account
+
         **Common Use Cases:**
         - Update specific user fields
         - Admin user management
         - Profile field corrections
 
         **Important Notes:**
-        - May require admin permissions
         - Only provided fields are updated
         - More flexible than PUT (full update)
         - Cannot change password via this endpoint (use set_password)
@@ -378,11 +388,11 @@ class CustomUserViewSet(UserViewSet):
         - PATCH: Only updates provided fields
         - PUT: Replaces entire resource (all fields required)
 
-        **Security Considerations:**
-        - Should typically be admin-only
-        - Verify permissions before allowing updates
+        **Security:**
+        - This endpoint is ADMIN-ONLY
+        - Regular users will receive 403 Forbidden
+        - Use `/auth/users/me/` to update your own profile
         - Audit log recommended for user modifications
-        - Validate all input fields
         """,
         request=inline_serializer(
             name='UserPartialUpdateRequest',
@@ -412,31 +422,37 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Delete user by ID',
+        summary='Delete user by ID (Admin only)',
         description="""
         Delete a user account by their user ID.
 
         **What This Does:**
         - Permanently deletes the user account
-        - May cascade delete related data (depends on configuration)
+        - Cascade deletes related data (tokens, 2FA settings, etc.)
         - Cannot be undone
+
+        **Prerequisites:**
+        - **Admin privileges required** (is_staff=True)
+        - Must be authenticated with admin account
 
         **Common Use Cases:**
         - Admin user management
         - Account removal requests
         - Cleanup of inactive/spam accounts
+        - Ban enforcement
 
         **Important Notes:**
-        - May require admin permissions
         - Deletion is permanent and irreversible
         - Related data (tokens, 2FA settings, etc.) will be deleted
         - Consider soft-delete for data retention
+        - All JWT tokens for user are automatically invalidated
 
-        **Security Considerations:**
-        - Should be admin-only or require strong authentication
+        **Security:**
+        - This endpoint is ADMIN-ONLY
+        - Regular users will receive 403 Forbidden
+        - Use `/auth/users/me/` to delete your own account
         - Audit log strongly recommended
         - Consider GDPR/data retention policies
-        - All JWT tokens for user are automatically invalidated
 
         **After Deletion:**
         - User cannot login

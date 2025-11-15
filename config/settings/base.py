@@ -137,9 +137,6 @@ PASSWORD_RESET_TIMEOUT = config('PASSWORD_RESET_TIMEOUT', default=86400, cast=in
 # Frontend URL for constructing password reset and email verification links
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
 
-# Email verification enforcement setting
-REQUIRE_EMAIL_VERIFICATION = config('REQUIRE_EMAIL_VERIFICATION', default=False, cast=bool)
-
 # JWT token blacklisting on password change (optional, default: False)
 # When True, all JWT tokens are blacklisted when user changes password
 BLACKLIST_TOKENS_ON_PASSWORD_CHANGE = config('BLACKLIST_TOKENS_ON_PASSWORD_CHANGE', default=False, cast=bool)
@@ -224,6 +221,20 @@ DJOSER = {
         'user_create': 'users.serializers.UserCreateSerializer',
         'user': 'users.serializers.UserSerializer',
         'current_user': 'users.serializers.UserSerializer',
+    },
+    'PERMISSIONS': {
+        'user': ['rest_framework.permissions.IsAdminUser'],  # GET /auth/users/ - Admin only
+        'user_list': ['rest_framework.permissions.IsAdminUser'],  # GET /auth/users/ - Admin only
+        'user_create': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/ - Public registration
+        'user_delete': ['rest_framework.permissions.IsAdminUser'],  # DELETE /auth/users/{id}/ - Admin only
+        'set_password': ['rest_framework.permissions.IsAuthenticated'],  # POST /auth/users/set_password/ - Current user
+        'username_reset': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_username/ - Public
+        'username_reset_confirm': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_username_confirm/ - Public
+        'set_username': ['rest_framework.permissions.IsAuthenticated'],  # POST /auth/users/set_username/ - Current user
+        'activation': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/activation/ - Public
+        'resend_activation': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/resend_activation/ - Public
+        'reset_password': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_password/ - Public
+        'reset_password_confirm': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_password_confirm/ - Public
     },
 }
 

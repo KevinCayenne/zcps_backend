@@ -26,11 +26,6 @@ class TestPasswordManagementConfiguration:
         assert isinstance(settings.FRONTEND_URL, str)
         assert settings.FRONTEND_URL != ''
 
-    def test_require_email_verification_is_boolean(self):
-        """Test REQUIRE_EMAIL_VERIFICATION is a boolean setting."""
-        assert hasattr(settings, 'REQUIRE_EMAIL_VERIFICATION')
-        assert isinstance(settings.REQUIRE_EMAIL_VERIFICATION, bool)
-
     def test_blacklist_tokens_on_password_change_is_boolean(self):
         """Test BLACKLIST_TOKENS_ON_PASSWORD_CHANGE is a boolean setting."""
         assert hasattr(settings, 'BLACKLIST_TOKENS_ON_PASSWORD_CHANGE')
