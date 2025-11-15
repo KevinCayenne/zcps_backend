@@ -10,6 +10,7 @@ from django.views import View
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView, SocialConnectView
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .oauth_adapters import (
     build_error_redirect_url,
     build_success_redirect_url,
@@ -22,11 +23,65 @@ from users.models import TwoFactorSettings
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    tags=['Authentication'],
+    summary='Initiate Google OAuth login (Browser redirect)',
+    description="""
+    **IMPORTANT: This endpoint requires a browser and cannot be tested directly in Swagger UI.**
+
+    Initiates the Google OAuth 2.0 authentication flow.
+
+    **How to Use:**
+    1. Open this URL in a browser: `http://localhost:8000/auth/google/`
+    2. User is redirected to Google's consent screen
+    3. User authorizes the application
+    4. User is redirected back to `/auth/google/callback/`
+    5. Backend creates/links user account
+    6. User is redirected to frontend with JWT tokens or temp_token
+
+    **OAuth Flow:**
+    ```
+    User clicks "Sign in with Google"
+    ↓
+    Frontend redirects to: GET /auth/google/
+    ↓
+    Backend redirects to: Google OAuth consent screen
+    ↓
+    User authorizes application
+    ↓
+    Google redirects to: GET /auth/google/callback/?code=...
+    ↓
+    Backend processes authorization code
+    ↓
+    Backend redirects to frontend with tokens
+    ```
+
+    **Scopes Requested:**
+    - `openid`: User identification
+    - `profile`: Basic profile information
+    - `email`: Email address
+
+    **Redirect After Success:**
+    - Without 2FA: `{FRONTEND_URL}/auth/callback?access=...&refresh=...`
+    - With 2FA: `{FRONTEND_URL}/auth/callback?temp_token=...&requires_2fa=true`
+
+    **Account Linking:**
+    - If email exists: Google account is linked to existing user
+    - If new email: New user account is created
+    - Email is auto-verified for OAuth users
+
+    **Frontend Integration:**
+    See `/docs/google-oauth-frontend-integration.md` for complete guide.
+    """,
+    responses={
+        302: OpenApiResponse(description='Redirect to Google OAuth consent screen'),
+    }
+)
 class GoogleLogin(SocialLoginView):
     """
     Google OAuth login view.
 
-    Initiates Google OAuth flow.
+    Initiates Google OAuth flow by redirecting to Google's consent screen.
     """
     adapter_class = GoogleOAuth2Adapter
     callback_url = None  # Will be set in get_callback_url

@@ -301,13 +301,21 @@ See [Production Settings](config/settings/production.py) for production configur
 
 ## Documentation
 
+### Setup & Integration Guides
 - [Google OAuth Setup Guide](docs/google-oauth-setup.md) - Set up Google OAuth credentials
 - [Frontend Integration Guide](docs/google-oauth-frontend-integration.md) - Integrate OAuth with your frontend
-- [API Documentation](http://localhost:8000/api/docs/) - Interactive Swagger UI (after starting server)
+
+### API Documentation & Testing
+- [Swagger API Reference](docs/swagger-api-reference.md) - Complete guide to using Swagger UI for testing
+- [Manual Testing Workflows](docs/manual-testing-workflows.md) - Step-by-step testing scenarios for all endpoints
+- [Interactive Swagger UI](http://localhost:8000/api/docs/) - Live API documentation (requires server running)
+- [ReDoc Documentation](http://localhost:8000/api/redoc/) - Alternative API documentation format
 
 ## Support
 
 For issues and questions:
+- Check the [Manual Testing Workflows](docs/manual-testing-workflows.md) for testing guidance
+- Review the [Swagger API Reference](docs/swagger-api-reference.md) for endpoint usage
 - Check the [Google OAuth Setup Guide](docs/google-oauth-setup.md) for OAuth-related issues
 - Review server logs for detailed error messages
 - Consult the API documentation at `/api/docs/`

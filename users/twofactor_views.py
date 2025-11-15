@@ -6,11 +6,11 @@ Handles 2FA setup, verification, and management.
 
 from django.conf import settings
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, inline_serializer
 
 from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
@@ -32,13 +32,80 @@ from users.oauth_adapters import generate_jwt_tokens
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Enable 2FA for user account',
-    description='Initiates 2FA setup by sending a verification code to user\'s email. Accepts optional method parameter (email or phone).',
+    summary='Enable 2FA - Step 1: Request verification code',
+    description="""
+    Initiate two-factor authentication setup for your account.
+
+    **Setup Workflow:**
+    1. Call this endpoint to request verification code
+    2. Check your email for 6-digit code
+    3. Call `/auth/2fa/enable/verify/` with the code to complete setup
+
+    **Methods:**
+    - **email** (implemented): Sends code to user's email
+    - **phone** (coming soon): Returns 501 Not Implemented
+
+    **Important Notes:**
+    - Requires authentication (Bearer token in Authorization header)
+    - 2FA cannot be enabled if already active
+    - Verification code expires in 10 minutes (configurable)
+    - After 5 failed verification attempts, you must request a new code
+    - Code is only valid for completing 2FA setup (not for login)
+    """,
     request=TwoFactorEnableSerializer,
+    examples=[
+        OpenApiExample(
+            'Enable 2FA with Email Method',
+            value={'method': 'email'},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Enable 2FA (use system default)',
+            value={},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Success Response',
+            value={
+                'message': 'Verification code sent to your email. Please verify to enable 2FA.',
+                'method': 'email',
+                'expires_at': '2025-11-15T12:10:00Z'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='Verification code sent successfully'),
-        400: OpenApiResponse(description='2FA is already enabled or email not verified'),
-        501: OpenApiResponse(description='Phone 2FA not implemented yet'),
+        200: OpenApiResponse(
+            description='Verification code sent successfully to user\'s email',
+            response=inline_serializer(
+                name='Enable2FASuccessResponse',
+                fields={
+                    'message': serializers.CharField(help_text='Success message'),
+                    'method': serializers.CharField(help_text='2FA method: "email"'),
+                    'expires_at': serializers.DateTimeField(help_text='When the verification code expires'),
+                }
+            )
+        ),
+        400: OpenApiResponse(
+            description='Bad request - 2FA already enabled',
+            response=inline_serializer(
+                name='Enable2FABadRequestResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message')
+                }
+            )
+        ),
+        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
+        501: OpenApiResponse(
+            description='Not Implemented - Phone 2FA requested but not yet available',
+            response=inline_serializer(
+                name='Enable2FANotImplementedResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message: "Phone 2FA coming soon..."')
+                }
+            )
+        ),
     }
 )
 @api_view(['POST'])
@@ -98,12 +165,66 @@ def enable_2fa(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Verify 2FA setup code',
-    description='Completes 2FA setup by verifying the code sent to user\'s email',
+    summary='Enable 2FA - Step 2: Verify code and complete setup',
+    description="""
+    Complete two-factor authentication setup by verifying the code sent to your email.
+
+    **Prerequisites:**
+    - Must have called `/auth/2fa/enable/` first
+    - Must have received 6-digit code via email
+    - Code must not be expired (10 minutes validity)
+    - Must not exceed 5 failed verification attempts
+
+    **On Success:**
+    - User's `is_2fa_enabled` field is set to `True`
+    - `twofa_setup_date` is recorded
+    - `preferred_2fa_method` is saved
+    - Future logins will require 2FA verification
+
+    **Error Scenarios:**
+    - Invalid code: Code doesn't match or doesn't exist
+    - Expired code: Code older than 10 minutes
+    - Code already used: Same code cannot be reused
+    - Too many attempts: More than 5 failed attempts (request new code)
+    """,
     request=TwoFactorVerifySetupSerializer,
+    examples=[
+        OpenApiExample(
+            'Verify 2FA Setup',
+            value={'code': '123456'},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Success Response',
+            value={
+                'message': '2FA has been enabled successfully.',
+                'method': 'email'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='2FA enabled successfully'),
-        400: OpenApiResponse(description='Invalid or expired code'),
+        200: OpenApiResponse(
+            description='2FA enabled successfully',
+            response=inline_serializer(
+                name='Verify2FASetupSuccessResponse',
+                fields={
+                    'message': serializers.CharField(help_text='Success message'),
+                    'method': serializers.CharField(help_text='2FA method that was enabled'),
+                }
+            )
+        ),
+        400: OpenApiResponse(
+            description='Bad request - Invalid, expired, or already used code',
+            response=inline_serializer(
+                name='Verify2FASetupBadRequestResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message explaining the issue')
+                }
+            )
+        ),
+        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
     }
 )
 @api_view(['POST'])
@@ -189,11 +310,57 @@ def verify_setup_2fa(request):
 @extend_schema(
     tags=['Two-Factor Authentication'],
     summary='Disable 2FA for user account',
-    description='Disables 2FA after password confirmation',
+    description="""
+    Disable two-factor authentication for your account.
+
+    **Security Requirements:**
+    - Requires current password confirmation
+    - Only works if 2FA is currently enabled
+
+    **What Happens:**
+    - User's `is_2fa_enabled` field is set to `False`
+    - All unused 2FA codes are invalidated
+    - Future logins will NOT require 2FA verification
+    - User can re-enable 2FA at any time
+
+    **Important Notes:**
+    - If system-wide 2FA enforcement is enabled, you will not be able to log in after disabling 2FA
+    - Check with administrator before disabling if enforcement is active
+    """,
     request=TwoFactorDisableSerializer,
+    examples=[
+        OpenApiExample(
+            'Disable 2FA',
+            value={'password': 'SecurePass123!'},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Success Response',
+            value={'message': '2FA has been disabled successfully.'},
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='2FA disabled successfully'),
-        400: OpenApiResponse(description='Invalid password or 2FA not enabled'),
+        200: OpenApiResponse(
+            description='2FA disabled successfully',
+            response=inline_serializer(
+                name='Disable2FASuccessResponse',
+                fields={
+                    'message': serializers.CharField(help_text='Success message')
+                }
+            )
+        ),
+        400: OpenApiResponse(
+            description='Bad request - Invalid password or 2FA not enabled',
+            response=inline_serializer(
+                name='Disable2FABadRequestResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message')
+                }
+            )
+        ),
+        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
     }
 )
 @api_view(['POST'])
@@ -242,10 +409,45 @@ def disable_2fa(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Get 2FA status',
-    description='Returns whether user has 2FA enabled and setup date',
+    summary='Get 2FA status for current user',
+    description="""
+    Check whether two-factor authentication is enabled for your account.
+
+    **Response Fields:**
+    - `is_2fa_enabled`: Boolean indicating if 2FA is active
+    - `twofa_setup_date`: Timestamp when 2FA was first enabled (null if not enabled)
+    - `preferred_2fa_method`: User's preferred 2FA method ("EMAIL" or "PHONE")
+
+    **Use Cases:**
+    - Check if user needs to complete 2FA setup
+    - Display 2FA status in user profile/settings
+    - Determine if user can disable 2FA
+    """,
+    examples=[
+        OpenApiExample(
+            'Success Response (2FA Enabled)',
+            value={
+                'is_2fa_enabled': True,
+                'twofa_setup_date': '2025-11-15T10:30:00Z',
+                'preferred_2fa_method': 'EMAIL'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+        OpenApiExample(
+            'Success Response (2FA Not Enabled)',
+            value={
+                'is_2fa_enabled': False,
+                'twofa_setup_date': None,
+                'preferred_2fa_method': None
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
         200: TwoFactorStatusSerializer,
+        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
     }
 )
 @api_view(['GET'])
@@ -269,12 +471,80 @@ def get_2fa_status(request):
 @extend_schema(
     tags=['Two-Factor Authentication'],
     summary='Verify 2FA code during login',
-    description='Completes login by verifying 2FA code with temporary token and returning full JWT tokens',
+    description="""
+    Complete the login process by verifying the 2FA code sent to your email.
+
+    **Prerequisites:**
+    - Must have received `temp_token` from `/auth/jwt/create/` login endpoint
+    - Must have 6-digit code from email
+    - Temporary token must not be expired (10 minutes validity)
+    - Code must not be expired (10 minutes validity)
+
+    **Authentication:**
+    - Use the `temp_token` in the Authorization header: `Bearer {temp_token}`
+    - Regular access tokens will NOT work for this endpoint
+
+    **Workflow:**
+    1. Login returns `temp_token` and sends code to email
+    2. User receives 6-digit code via email
+    3. Call this endpoint with temp_token and code
+    4. Receive full JWT tokens (access + refresh)
+    5. Use access token for subsequent API calls
+
+    **On Success:**
+    - Full JWT access and refresh tokens are returned
+    - Temporary token becomes invalid
+    - 2FA code is marked as used
+    - User's `last_2fa_verification` timestamp is updated
+    """,
     request=TwoFactorVerifyLoginSerializer,
+    examples=[
+        OpenApiExample(
+            'Verify 2FA Login',
+            value={'code': '654321'},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Success Response',
+            value={
+                'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                'message': '2FA verification successful.'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='Full JWT tokens returned'),
-        400: OpenApiResponse(description='Invalid or expired code'),
-        401: OpenApiResponse(description='Invalid or expired temporary token'),
+        200: OpenApiResponse(
+            description='2FA verification successful, full JWT tokens returned',
+            response=inline_serializer(
+                name='Verify2FALoginSuccessResponse',
+                fields={
+                    'access': serializers.CharField(help_text='JWT access token (expires in 15 min)'),
+                    'refresh': serializers.CharField(help_text='JWT refresh token (expires in 7 days)'),
+                    'message': serializers.CharField(help_text='Success message'),
+                }
+            )
+        ),
+        400: OpenApiResponse(
+            description='Bad request - Invalid or expired verification code',
+            response=inline_serializer(
+                name='Verify2FALoginBadRequestResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message explaining the issue')
+                }
+            )
+        ),
+        401: OpenApiResponse(
+            description='Unauthorized - Invalid or expired temporary token',
+            response=inline_serializer(
+                name='Verify2FALoginUnauthorizedResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message about token issue')
+                }
+            )
+        ),
     }
 )
 @api_view(['POST'])
@@ -398,12 +668,63 @@ def verify_2fa_login(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Resend 2FA verification code',
-    description='Generates and sends a new 2FA code using temporary token',
+    summary='Resend 2FA verification code during login',
+    description="""
+    Request a new 2FA verification code during the login process.
+
+    **Use Cases:**
+    - Previous code expired (after 10 minutes)
+    - Code was not received or lost
+    - Too many failed verification attempts with previous code
+
+    **Prerequisites:**
+    - Must have `temp_token` from login endpoint
+    - Use temp_token in Authorization header: `Bearer {temp_token}`
+
+    **What Happens:**
+    - All previous unused 2FA codes are invalidated
+    - New 6-digit code is generated
+    - New code is sent to user's email
+    - New expiration time is set (10 minutes from now)
+    - Temporary token remains valid
+
+    **Important Notes:**
+    - No request body needed
+    - Only works with temporary 2FA tokens
+    - Regular access tokens will not work
+    """,
     request=TwoFactorResendSerializer,
+    examples=[
+        OpenApiExample(
+            'Success Response',
+            value={
+                'message': 'New verification code sent to your email.',
+                'expires_at': '2025-11-15T12:20:00Z'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='New code sent successfully'),
-        401: OpenApiResponse(description='Invalid or expired temporary token'),
+        200: OpenApiResponse(
+            description='New verification code sent successfully',
+            response=inline_serializer(
+                name='Resend2FASuccessResponse',
+                fields={
+                    'message': serializers.CharField(help_text='Success message'),
+                    'expires_at': serializers.DateTimeField(help_text='When the new code expires'),
+                }
+            )
+        ),
+        401: OpenApiResponse(
+            description='Unauthorized - Invalid or expired temporary token',
+            response=inline_serializer(
+                name='Resend2FAUnauthorizedResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message about token issue')
+                }
+            )
+        ),
     }
 )
 @api_view(['POST'])
@@ -479,11 +800,65 @@ def resend_2fa_code(request):
 @extend_schema(
     tags=['Email Verification'],
     summary='Send email verification code',
-    description='Sends a verification code to user\'s email for email verification',
+    description="""
+    Request an email verification code to verify your email address.
+
+    **Purpose:**
+    - Prove ownership of the email address
+    - Separate from 2FA verification (different verification type)
+    - Required by some features or system policies
+
+    **Prerequisites:**
+    - Must be authenticated (Bearer token in Authorization header)
+    - Email must not already be verified
+
+    **Workflow:**
+    1. Call this endpoint to request code
+    2. Check email for 6-digit code
+    3. Call `/auth/email/verify/` with the code
+    4. Email is marked as verified
+
+    **What Happens:**
+    - 6-digit code generated and sent to user's email
+    - Code expires in 10 minutes (configurable)
+    - Previous unused email verification codes are invalidated
+    - Code can only be used for email verification (not 2FA)
+
+    **Note:** OAuth users have their email auto-verified during registration.
+    """,
     request=EmailVerificationSendSerializer,
+    examples=[
+        OpenApiExample(
+            'Success Response',
+            value={
+                'message': 'Verification code sent to your email.',
+                'expires_at': '2025-11-15T12:30:00Z'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='Verification code sent successfully'),
-        400: OpenApiResponse(description='Email already verified'),
+        200: OpenApiResponse(
+            description='Verification code sent successfully',
+            response=inline_serializer(
+                name='SendEmailVerificationSuccessResponse',
+                fields={
+                    'message': serializers.CharField(help_text='Success message'),
+                    'expires_at': serializers.DateTimeField(help_text='When the code expires'),
+                }
+            )
+        ),
+        400: OpenApiResponse(
+            description='Bad request - Email already verified',
+            response=inline_serializer(
+                name='SendEmailVerificationBadRequestResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message')
+                }
+            )
+        ),
+        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
     }
 )
 @api_view(['POST'])
@@ -522,12 +897,70 @@ def send_email_verification_code(request):
 
 @extend_schema(
     tags=['Email Verification'],
-    summary='Verify email with code',
-    description='Verifies user email address with the code sent via email',
+    summary='Verify email address with code',
+    description="""
+    Complete email verification by submitting the 6-digit code sent to your email.
+
+    **Prerequisites:**
+    - Must have called `/auth/email/verify/send/` first
+    - Must have received 6-digit code via email
+    - Code must not be expired (10 minutes validity)
+    - Must not exceed 5 failed verification attempts
+
+    **On Success:**
+    - User's `email_verified` field is set to `True`
+    - Verification code is marked as used
+    - Cannot be used again (one-time use)
+
+    **Error Scenarios:**
+    - Invalid code: Code doesn't match or doesn't exist
+    - Expired code: Code older than 10 minutes
+    - Code already used: Same code cannot be reused
+    - Too many attempts: More than 5 failed attempts (request new code)
+
+    **Important Notes:**
+    - This is separate from 2FA codes (different verification type)
+    - Requires regular access token authentication
+    - Cannot use 2FA codes for email verification
+    """,
     request=EmailVerificationVerifySerializer,
+    examples=[
+        OpenApiExample(
+            'Verify Email',
+            value={'code': '789012'},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Success Response',
+            value={
+                'message': 'Email verified successfully.',
+                'verified_at': '2025-11-15T12:25:00Z'
+            },
+            response_only=True,
+            status_codes=['200'],
+        ),
+    ],
     responses={
-        200: OpenApiResponse(description='Email verified successfully'),
-        400: OpenApiResponse(description='Invalid or expired code'),
+        200: OpenApiResponse(
+            description='Email verified successfully',
+            response=inline_serializer(
+                name='VerifyEmailSuccessResponse',
+                fields={
+                    'message': serializers.CharField(help_text='Success message'),
+                    'verified_at': serializers.DateTimeField(help_text='Timestamp when email was verified'),
+                }
+            )
+        ),
+        400: OpenApiResponse(
+            description='Bad request - Invalid, expired, or already used code',
+            response=inline_serializer(
+                name='VerifyEmailBadRequestResponse',
+                fields={
+                    'error': serializers.CharField(help_text='Error message explaining the issue')
+                }
+            )
+        ),
+        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
     }
 )
 @api_view(['POST'])

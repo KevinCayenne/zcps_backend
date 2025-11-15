@@ -12,9 +12,8 @@ from users.twofactor_views import (
     enable_2fa, verify_setup_2fa, disable_2fa, get_2fa_status,
     verify_2fa_login, resend_2fa_code, send_email_verification_code, verify_email_code
 )
-from users.jwt_views import CustomTokenObtainPairView
+from users.jwt_views import CustomTokenObtainPairView, CustomTokenRefreshView, CustomTokenVerifyView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
-from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -29,8 +28,8 @@ urlpatterns = [
 
     # Custom JWT login endpoint with 2FA support
     path('auth/jwt/create/', CustomTokenObtainPairView.as_view(), name='jwt-create'),
-    path('auth/jwt/refresh/', TokenRefreshView.as_view(), name='jwt-refresh'),
-    path('auth/jwt/verify/', TokenVerifyView.as_view(), name='jwt-verify'),
+    path('auth/jwt/refresh/', CustomTokenRefreshView.as_view(), name='jwt-refresh'),
+    path('auth/jwt/verify/', CustomTokenVerifyView.as_view(), name='jwt-verify'),
 
     # Custom logout endpoint with token blacklisting
     path('auth/logout/', LogoutView.as_view(), name='logout'),
