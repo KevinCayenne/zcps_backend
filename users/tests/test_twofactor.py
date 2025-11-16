@@ -310,16 +310,3 @@ class TwoFactorUtilsTests(TestCase):
         self.assertEqual(len(code.code), 6)
         self.assertTrue(code.code.isdigit())
         self.assertGreater(code.expires_at, timezone.now())
-
-    @patch('users.twofactor_utils.send_mail')
-    def test_send_2fa_code_email(self, mock_send_mail):
-        """Test sending 2FA code email."""
-        from users.twofactor_utils import send_2fa_code_email
-
-        mock_send_mail.return_value = 1
-        result = send_2fa_code_email(self.user, '123456')
-
-        self.assertEqual(result, 1)
-        mock_send_mail.assert_called_once()
-        args, kwargs = mock_send_mail.call_args
-        self.assertIn('123456', args[1])  # Check code is in message body

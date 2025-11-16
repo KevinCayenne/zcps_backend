@@ -24,7 +24,7 @@ from users.serializers import (
     TwoFactorVerifyLoginSerializer,
     TwoFactorResendSerializer,
 )
-from users.twofactor_utils import generate_2fa_code, send_2fa_code_email, get_twofactor_settings
+from users.twofactor_utils import generate_2fa_code, send_2fa_code, get_twofactor_settings
 from users.oauth_adapters import generate_jwt_tokens
 
 
@@ -149,7 +149,7 @@ def enable_2fa(request):
 
     # Generate and send verification code
     twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
-    send_2fa_code_email(user, twofactor_code.code, verification_type='TWO_FACTOR')
+    send_2fa_code(user, twofactor_code.code, preferred_2fa_method=method, verification_type='TWO_FACTOR')
 
     return Response(
         {
@@ -786,7 +786,7 @@ def resend_2fa_code(request):
 
     # Generate and send new verification code
     twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
-    send_2fa_code_email(user, twofactor_code.code, verification_type='TWO_FACTOR')
+    send_2fa_code(user, twofactor_code.code, verification_type='TWO_FACTOR')
 
     return Response(
         {

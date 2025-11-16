@@ -96,9 +96,47 @@ def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
     return twofactor_code
 
 
-def send_2fa_code_email(user, code, verification_type='TWO_FACTOR'):
+def send_2fa_code(user, code, preferred_2fa_method='None', verification_type='TWO_FACTOR'):
+    """
+    Send 2FA verification code to user via their preferred method.
+
+    Args:
+        user: User instance to send code to
+        code: The 6-digit verification code string
+        preferred_2fa_method: Delivery method ('EMAIL' or 'PHONE'). If None, uses user's preference or system default.
+        verification_type: Type of verification to customize message content
+
+    Returns:
+        int: 1 on success, 0 on failure
+
+    Raises:
+        NotImplementedError: If PHONE method is requested (not yet implemented)
+    """
+    # Determine the delivery method
+    if preferred_2fa_method is None:
+        # Use user's preferred method if set, otherwise use system default
+        preferred_2fa_method = user.get_effective_2fa_method()
+
+    # Convert to uppercase to handle case variations
+    preferred_2fa_method = preferred_2fa_method.upper()
+
+    # Route to appropriate delivery method
+    if preferred_2fa_method == 'EMAIL':
+        return _send_2fa_code_via_email(user, code, verification_type)
+    elif preferred_2fa_method == 'PHONE':
+        raise NotImplementedError(
+            "Phone 2FA delivery is not yet implemented. Please use EMAIL method."
+        )
+    else:
+        logger.error(f"Unknown 2FA method: {preferred_2fa_method}. Defaulting to EMAIL.")
+        return _send_2fa_code_via_email(user, code, verification_type)
+
+
+def _send_2fa_code_via_email(user, code, verification_type='TWO_FACTOR'):
     """
     Send 2FA verification code to user's email.
+
+    Internal implementation for email delivery.
 
     Args:
         user: User instance to send code to

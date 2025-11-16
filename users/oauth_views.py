@@ -18,7 +18,7 @@ from .oauth_adapters import (
     generate_jwt_tokens,
     generate_temporary_2fa_token
 )
-from .twofactor_utils import generate_2fa_code, send_2fa_code_email
+from .twofactor_utils import generate_2fa_code, send_2fa_code
 from users.models import TwoFactorSettings
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class GoogleCallback(View):
             if settings_obj.enforce_2fa_for_all_users or user.is_2fa_enabled:
                 # Generate and send 2FA code
                 twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
-                send_2fa_code_email(user, twofactor_code.code, verification_type='TWO_FACTOR')
+                send_2fa_code(user, twofactor_code.code, verification_type='TWO_FACTOR')
 
                 # Generate temporary token for 2FA verification
                 temp_token = generate_temporary_2fa_token(user)
