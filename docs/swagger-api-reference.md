@@ -28,7 +28,6 @@ Endpoints are organized by tags:
 - **Authentication** - Login, logout, token management
 - **Two-Factor Authentication** - 2FA setup and verification
 - **User Management** - User registration and profile management
-- **Email Verification** - Email verification endpoints
 
 ---
 
@@ -110,13 +109,6 @@ Try `GET /auth/users/me/` to verify authentication works:
 | `/auth/users/reset_password/` | POST | No | Request password reset |
 | `/auth/users/reset_password_confirm/` | POST | No | Confirm password reset |
 | `/auth/users/set_password/` | POST | Yes | Change password |
-
-### Email Verification Endpoints
-
-| Endpoint | Method | Auth Required | Description |
-|----------|--------|---------------|-------------|
-| `/auth/email/verify/send/` | POST | Yes | Send email verification code |
-| `/auth/email/verify/` | POST | Yes | Verify email with code |
 
 ---
 
@@ -458,47 +450,6 @@ Try `GET /auth/users/me/` to verify authentication works:
 
 ---
 
-### 15. Send Email Verification Code
-
-**Endpoint:** `POST /auth/email/verify/send/`
-
-**Prerequisites:** Must be authenticated
-
-**No request body needed**
-
-**Expected Response:** `200 OK`
-```json
-{
-  "message": "Verification code sent to your email.",
-  "expires_at": "2025-11-15T12:30:00Z"
-}
-```
-
----
-
-### 16. Verify Email Address
-
-**Endpoint:** `POST /auth/email/verify/`
-
-**Prerequisites:** Must be authenticated
-
-**Request Body:**
-```json
-{
-  "code": "789012"
-}
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "message": "Email verified successfully.",
-  "verified_at": "2025-11-15T12:25:00Z"
-}
-```
-
----
-
 ## Testing Workflows
 
 ### Workflow 1: New User Registration and Login
@@ -621,7 +572,7 @@ http://localhost:8000/admin/
 
 ### "Invalid or expired verification code"
 
-**Problem:** 2FA/email verification failing
+**Problem:** 2FA failing
 
 **Solution:**
 1. Check email for correct code
@@ -683,7 +634,6 @@ http://localhost:8000/admin/
 |------|---------|----------|--------|
 | 2FA Login | Verify during login | 10 min | 6 digits |
 | 2FA Setup | Enable 2FA | 10 min | 6 digits |
-| Email Verification | Verify email | 10 min | 6 digits |
 
 ---
 

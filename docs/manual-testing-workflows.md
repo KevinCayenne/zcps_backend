@@ -11,7 +11,6 @@ This document provides comprehensive testing workflows for all authentication en
 5. [Enable Two-Factor Authentication](#5-enable-two-factor-authentication)
 6. [Disable Two-Factor Authentication](#6-disable-two-factor-authentication)
 7. [Password Reset Flow](#7-password-reset-flow)
-8. [Email Verification (Standalone)](#8-email-verification-standalone)
 9. [Token Refresh & Verification](#9-token-refresh--verification)
 10. [Logout & Token Blacklisting](#10-logout--token-blacklisting)
 11. [2FA Enforcement Scenarios](#11-2fa-enforcement-scenarios)
@@ -60,7 +59,6 @@ This document provides comprehensive testing workflows for all authentication en
 
 **Validation:**
 - ✅ User created in database
-- ✅ User can immediately log in (if `REQUIRE_EMAIL_VERIFICATION=False`)
 - ✅ No activation email sent (if `SEND_ACTIVATION_EMAIL=False`)
 
 ---
@@ -570,69 +568,6 @@ Body: Click the link to reset your password: http://localhost:3000/reset-passwor
 - ✅ **All refresh tokens blacklisted** (forced logout)
 - ✅ User must log in again with new password
 - ✅ Token becomes invalid after use
-
----
-
-## 8. Email Verification (Standalone)
-
-### Scenario 8.1: Send Email Verification Code
-
-**Endpoint:** `POST /auth/email/verify/send/`
-
-**Request Headers:**
-```
-Authorization: Bearer {access_token}
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "message": "Verification code sent to your email.",
-  "expires_at": "2025-11-15T13:05:00Z"
-}
-```
-
-**Email Sent:**
-```
-Subject: Verify Your Email Address
-Body: Your verification code is: 789012
-```
-
-**Validation:**
-- ✅ 6-digit code sent
-- ✅ Verification type is `EMAIL_VERIFICATION`
-- ✅ Code expires in 10 minutes
-
----
-
-### Scenario 8.2: Verify Email Address
-
-**Endpoint:** `POST /auth/email/verify/`
-
-**Request Headers:**
-```
-Authorization: Bearer {access_token}
-```
-
-**Request Body:**
-```json
-{
-  "code": "789012"
-}
-```
-
-**Expected Response:** `200 OK`
-```json
-{
-  "message": "Email verified successfully.",
-  "verified_at": "2025-11-15T13:00:00Z"
-}
-```
-
-**Validation:**
-- ✅ `email_verified=True` in database
-- ✅ Code marked as used
-- ✅ Separate from 2FA verification codes
 
 ---
 

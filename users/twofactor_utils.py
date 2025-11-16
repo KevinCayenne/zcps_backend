@@ -49,7 +49,7 @@ def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
     Args:
         user: User instance to generate code for
         settings_obj: TwoFactorSettings instance (defaults to singleton)
-        verification_type: Type of verification ('TWO_FACTOR' or 'EMAIL_VERIFICATION')
+        verification_type: Type of verification ('TWO_FACTOR')
 
     Returns:
         TwoFactorCode: The newly created code instance
@@ -109,14 +109,9 @@ def send_2fa_code_email(user, code, verification_type='TWO_FACTOR'):
         int: Number of emails sent (1 on success, 0 on failure)
     """
     # Customize subject and message based on verification type
-    if verification_type == 'EMAIL_VERIFICATION':
-        subject = 'Verify Your Email Address'
-        intro_text = 'Please verify your email address with the code below:'
-        purpose_text = 'email verification'
-    else:  # TWO_FACTOR
-        subject = 'Your Two-Factor Authentication Code'
-        intro_text = 'Your two-factor authentication code is:'
-        purpose_text = 'two-factor authentication'
+    subject = 'Your Two-Factor Authentication Code'
+    intro_text = 'Your two-factor authentication code is:'
+    purpose_text = 'two-factor authentication'
 
     # Get expiration time in minutes for display
     settings_obj = get_twofactor_settings()

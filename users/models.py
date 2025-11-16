@@ -221,7 +221,6 @@ class TwoFactorCode(models.Model):
         max_length=20,
         choices=[
             ('TWO_FACTOR', 'Two-Factor Authentication'),
-            ('EMAIL_VERIFICATION', 'Email Verification'),
         ],
         default='TWO_FACTOR',
         help_text='Type of verification this code is used for'

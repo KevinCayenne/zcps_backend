@@ -222,6 +222,12 @@ DJOSER = {
         'user': 'users.serializers.UserSerializer',
         'current_user': 'users.serializers.UserSerializer',
     },
+    'EMAIL': {
+        'activation': 'users.email.ActivationEmail',
+        'confirmation': 'users.email.ConfirmationEmail',
+        'password_reset': 'users.email.PasswordResetEmail',
+        'password_changed_confirmation': 'users.email.PasswordChangedConfirmationEmail',
+    },
     'PERMISSIONS': {
         'user': ['rest_framework.permissions.IsAdminUser'],  # GET /auth/users/ - Admin only
         'user_list': ['rest_framework.permissions.IsAdminUser'],  # GET /auth/users/ - Admin only

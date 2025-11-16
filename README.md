@@ -20,8 +20,7 @@ A production-ready Django REST Framework boilerplate with comprehensive authenti
 - Configurable password reset token expiration
 
 ### Email Features
-- Email activation/verification system
-- Configurable email verification enforcement
+- Email activation system
 - Resend activation email functionality
 - Password reset confirmation emails
 - Password change notification emails
@@ -195,7 +194,6 @@ JWT_REFRESH_TOKEN_DAYS=7
 
 # Email
 SEND_ACTIVATION_EMAIL=True
-REQUIRE_EMAIL_VERIFICATION=False
 
 # Password Management
 PASSWORD_RESET_TIMEOUT=86400

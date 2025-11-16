@@ -23,8 +23,6 @@ from users.serializers import (
     TwoFactorStatusSerializer,
     TwoFactorVerifyLoginSerializer,
     TwoFactorResendSerializer,
-    EmailVerificationSendSerializer,
-    EmailVerificationVerifySerializer,
 )
 from users.twofactor_utils import generate_2fa_code, send_2fa_code_email, get_twofactor_settings
 from users.oauth_adapters import generate_jwt_tokens
@@ -260,7 +258,7 @@ def verify_setup_2fa(request):
         ).latest('created_at')
     except TwoFactorCode.DoesNotExist:
         return Response(
-            {'error': 'Invalid verification code.'},
+            {'error': 'Invalid or expired verification code.'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -624,7 +622,7 @@ def verify_2fa_login(request):
         ).latest('created_at')
     except TwoFactorCode.DoesNotExist:
         return Response(
-            {'error': 'Invalid verification code.'},
+            {'error': 'Invalid or expired verification code.'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -796,236 +794,3 @@ def resend_2fa_code(request):
         status=status.HTTP_200_OK
     )
 
-
-@extend_schema(
-    tags=['Email Verification'],
-    summary='Send email verification code',
-    description="""
-    Request an email verification code to verify your email address.
-
-    **Purpose:**
-    - Prove ownership of the email address
-    - Separate from 2FA verification (different verification type)
-    - Required by some features or system policies
-
-    **Prerequisites:**
-    - Must be authenticated (Bearer token in Authorization header)
-    - Email must not already be verified
-
-    **Workflow:**
-    1. Call this endpoint to request code
-    2. Check email for 6-digit code
-    3. Call `/auth/email/verify/` with the code
-    4. Email is marked as verified
-
-    **What Happens:**
-    - 6-digit code generated and sent to user's email
-    - Code expires in 10 minutes (configurable)
-    - Previous unused email verification codes are invalidated
-    - Code can only be used for email verification (not 2FA)
-
-    **Note:** OAuth users have their email auto-verified during registration.
-    """,
-    request=EmailVerificationSendSerializer,
-    examples=[
-        OpenApiExample(
-            'Success Response',
-            value={
-                'message': 'Verification code sent to your email.',
-                'expires_at': '2025-11-15T12:30:00Z'
-            },
-            response_only=True,
-            status_codes=['200'],
-        ),
-    ],
-    responses={
-        200: OpenApiResponse(
-            description='Verification code sent successfully',
-            response=inline_serializer(
-                name='SendEmailVerificationSuccessResponse',
-                fields={
-                    'message': serializers.CharField(help_text='Success message'),
-                    'expires_at': serializers.DateTimeField(help_text='When the code expires'),
-                }
-            )
-        ),
-        400: OpenApiResponse(
-            description='Bad request - Email already verified',
-            response=inline_serializer(
-                name='SendEmailVerificationBadRequestResponse',
-                fields={
-                    'error': serializers.CharField(help_text='Error message')
-                }
-            )
-        ),
-        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
-    }
-)
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def send_email_verification_code(request):
-    """
-    Send email verification code to authenticated user.
-
-    Generates and sends a 6-digit code for email verification.
-    """
-    user = request.user
-
-    if user.email_verified:
-        return Response(
-            {'error': 'Email is already verified.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Get TwoFactorSettings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        settings_obj = TwoFactorSettings.get_solo()
-
-    # Generate and send verification code
-    twofactor_code = generate_2fa_code(user, settings_obj, verification_type='EMAIL_VERIFICATION')
-    send_2fa_code_email(user, twofactor_code.code, verification_type='EMAIL_VERIFICATION')
-
-    return Response(
-        {
-            'message': 'Verification code sent to your email.',
-            'expires_at': twofactor_code.expires_at
-        },
-        status=status.HTTP_200_OK
-    )
-
-
-@extend_schema(
-    tags=['Email Verification'],
-    summary='Verify email address with code',
-    description="""
-    Complete email verification by submitting the 6-digit code sent to your email.
-
-    **Prerequisites:**
-    - Must have called `/auth/email/verify/send/` first
-    - Must have received 6-digit code via email
-    - Code must not be expired (10 minutes validity)
-    - Must not exceed 5 failed verification attempts
-
-    **On Success:**
-    - User's `email_verified` field is set to `True`
-    - Verification code is marked as used
-    - Cannot be used again (one-time use)
-
-    **Error Scenarios:**
-    - Invalid code: Code doesn't match or doesn't exist
-    - Expired code: Code older than 10 minutes
-    - Code already used: Same code cannot be reused
-    - Too many attempts: More than 5 failed attempts (request new code)
-
-    **Important Notes:**
-    - This is separate from 2FA codes (different verification type)
-    - Requires regular access token authentication
-    - Cannot use 2FA codes for email verification
-    """,
-    request=EmailVerificationVerifySerializer,
-    examples=[
-        OpenApiExample(
-            'Verify Email',
-            value={'code': '789012'},
-            request_only=True,
-        ),
-        OpenApiExample(
-            'Success Response',
-            value={
-                'message': 'Email verified successfully.',
-                'verified_at': '2025-11-15T12:25:00Z'
-            },
-            response_only=True,
-            status_codes=['200'],
-        ),
-    ],
-    responses={
-        200: OpenApiResponse(
-            description='Email verified successfully',
-            response=inline_serializer(
-                name='VerifyEmailSuccessResponse',
-                fields={
-                    'message': serializers.CharField(help_text='Success message'),
-                    'verified_at': serializers.DateTimeField(help_text='Timestamp when email was verified'),
-                }
-            )
-        ),
-        400: OpenApiResponse(
-            description='Bad request - Invalid, expired, or already used code',
-            response=inline_serializer(
-                name='VerifyEmailBadRequestResponse',
-                fields={
-                    'error': serializers.CharField(help_text='Error message explaining the issue')
-                }
-            )
-        ),
-        401: OpenApiResponse(description='Unauthorized - Missing or invalid authentication token'),
-    }
-)
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def verify_email_code(request):
-    """
-    Verify email address with verification code.
-
-    Validates the code and sets email_verified to True.
-    """
-    user = request.user
-    serializer = EmailVerificationVerifySerializer(data=request.data)
-
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    code = serializer.validated_data['code']
-
-    # Get TwoFactorSettings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        settings_obj = TwoFactorSettings.get_solo()
-
-    max_attempts = settings_obj.max_failed_attempts
-
-    # Find the most recent unused code for this user
-    try:
-        twofactor_code = TwoFactorCode.objects.filter(
-            user=user,
-            code=code,
-            is_used=False,
-            verification_type='EMAIL_VERIFICATION'
-        ).latest('created_at')
-    except TwoFactorCode.DoesNotExist:
-        return Response(
-            {'error': 'Invalid verification code.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Check if code is valid
-    if not twofactor_code.is_valid(max_attempts):
-        if twofactor_code.expires_at <= timezone.now():
-            return Response(
-                {'error': 'Verification code has expired.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        elif twofactor_code.failed_attempts >= max_attempts:
-            return Response(
-                {'error': 'Too many failed attempts. Please request a new code.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        else:
-            return Response(
-                {'error': 'Verification code has already been used.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    # Mark code as used and verify email
-    twofactor_code.is_used = True
-    twofactor_code.save()
-
-    user.email_verified = True
-    user.save()
-
-    return Response(
-        {'message': 'Email verified successfully.'},
-        status=status.HTTP_200_OK
-    )

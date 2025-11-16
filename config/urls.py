@@ -10,7 +10,7 @@ from users.views import LogoutView
 from users.oauth_views import GoogleLogin, GoogleCallback
 from users.twofactor_views import (
     enable_2fa, verify_setup_2fa, disable_2fa, get_2fa_status,
-    verify_2fa_login, resend_2fa_code, send_email_verification_code, verify_email_code
+    verify_2fa_login, resend_2fa_code
 )
 from users.jwt_views import CustomTokenObtainPairView, CustomTokenRefreshView, CustomTokenVerifyView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
@@ -45,8 +45,4 @@ urlpatterns = [
     path('auth/2fa/status/', get_2fa_status, name='2fa_status'),
     path('auth/2fa/verify/', verify_2fa_login, name='2fa_verify_login'),
     path('auth/2fa/resend/', resend_2fa_code, name='2fa_resend'),
-
-    # Email Verification endpoints
-    path('auth/email/verify/send/', send_email_verification_code, name='email_verify_send'),
-    path('auth/email/verify/', verify_email_code, name='email_verify'),
 ]

@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='twofactorcode',
             name='verification_type',
-            field=models.CharField(choices=[('TWO_FACTOR', 'Two-Factor Authentication'), ('EMAIL_VERIFICATION', 'Email Verification')], default='TWO_FACTOR', help_text='Type of verification this code is used for', max_length=20),
+            field=models.CharField(choices=[('TWO_FACTOR', 'Two-Factor Authentication')], default='TWO_FACTOR', help_text='Type of verification this code is used for', max_length=20),
         ),
         migrations.RunPython(set_existing_codes_to_twofactor, reverse_set_existing_codes),
     ]

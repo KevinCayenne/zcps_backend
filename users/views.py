@@ -139,7 +139,6 @@ class CustomUserViewSet(UserViewSet):
         - Email must be unique
         - Username is optional (can login with email)
         - Password must meet validation requirements
-        - Email verification is separate from account activation
         - OAuth users are auto-activated
 
         **After Registration:**
@@ -251,7 +250,6 @@ class CustomUserViewSet(UserViewSet):
         - User ID
         - Email address
         - Username
-        - Email verification status
         - 2FA status
         - Other profile fields
 
@@ -482,7 +480,6 @@ class CustomUserViewSet(UserViewSet):
         - User ID
         - Email address
         - Username
-        - Email verification status
         - 2FA enabled status
         - Any other profile fields
 
@@ -491,7 +488,6 @@ class CustomUserViewSet(UserViewSet):
 
         **Use Cases:**
         - Display user profile in UI
-        - Check email verification status
         - Check 2FA status
         - Get user ID for other operations
         """,
