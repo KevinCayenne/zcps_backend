@@ -5,7 +5,6 @@ Provides code generation, validation, and email sending functionality.
 """
 
 import secrets
-import warnings
 import logging
 from datetime import timedelta
 from functools import lru_cache
@@ -66,19 +65,13 @@ def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
     ).update(is_used=True)
 
     # Generate 6-digit numeric code using cryptographically secure random
-    if settings_obj:
-        code_length = 6  # Always use 6 digits
-        expiration_seconds = settings_obj.code_expiration_seconds
-    else:
-        # Fallback to Django settings with deprecation warning
-        warnings.warn(
-            "TwoFactorSettings not found. Using deprecated Django settings. "
-            "Please ensure migrations have been run.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        code_length = getattr(settings, 'TWOFACTOR_CODE_LENGTH', 6)
-        expiration_seconds = getattr(settings, 'TWOFACTOR_CODE_EXPIRATION', 600)
+    if not settings_obj:
+        # This should never happen after migrations are run
+        logger.error("TwoFactorSettings not found. Please ensure migrations have been run.")
+        raise ValueError("TwoFactorSettings model not found. Run migrations first.")
+
+    code_length = 6  # Always use 6 digits
+    expiration_seconds = settings_obj.code_expiration_seconds
 
     code = ''.join([str(secrets.randbelow(10)) for _ in range(code_length)])
 
@@ -153,17 +146,11 @@ def _send_2fa_code_via_email(user, code, verification_type='TWO_FACTOR'):
 
     # Get expiration time in minutes for display
     settings_obj = get_twofactor_settings()
-    if settings_obj:
-        expiration_seconds = settings_obj.code_expiration_seconds
-    else:
-        # Fallback with deprecation warning
-        warnings.warn(
-            "TWOFACTOR_CODE_EXPIRATION setting is deprecated. Use TwoFactorSettings model.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        expiration_seconds = getattr(settings, 'TWOFACTOR_CODE_EXPIRATION', 600)
+    if not settings_obj:
+        logger.error("TwoFactorSettings not found. Please ensure migrations have been run.")
+        raise ValueError("TwoFactorSettings model not found. Run migrations first.")
 
+    expiration_seconds = settings_obj.code_expiration_seconds
     expiration_minutes = expiration_seconds // 60
 
     message = f"""Hi {user.first_name or user.username},

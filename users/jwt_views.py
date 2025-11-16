@@ -38,19 +38,26 @@ class CustomTokenObtainPairView(APIView):
 
         1. **Without 2FA:** Returns standard JWT tokens immediately
         2. **With 2FA Enabled:** Returns temporary token and sends 6-digit code to email
-        3. **With 2FA Enforcement:** Returns 403 error if user hasn't enabled 2FA
+        3. **With 2FA Enforcement (user has 2FA):** Returns setup_token to enable 2FA first
 
         **Important Notes:**
         - You can login with either email OR username
         - Temporary tokens expire in 10 minutes (configurable)
-        - Temporary tokens only work with `/auth/2fa/verify/` and `/auth/2fa/resend/`
+        - Temporary tokens only work with 2FA-related endpoints
         - After 2FA verification, use the returned access/refresh tokens for API calls
 
-        **Example Workflow (With 2FA):**
+        **Example Workflow (With 2FA Already Enabled):**
         1. Login → Receive temp_token
         2. Check email for 6-digit code
         3. Call `/auth/2fa/verify/` with temp_token and code
         4. Receive full JWT tokens
+
+        **Example Workflow (2FA Enforcement but User Hasn't Enabled 2FA):**
+        1. Login → Receive setup_token
+        2. Call `/auth/2fa/enable/` with setup_token to start 2FA setup
+        3. Check email for 6-digit setup code
+        4. Call `/auth/2fa/enable/verify/` with setup_token and code
+        5. Login again → Now follows normal 2FA flow
         """,
         request=inline_serializer(
             name='LoginRequest',
@@ -97,7 +104,7 @@ class CustomTokenObtainPairView(APIView):
                 status_codes=['200'],
             ),
             OpenApiExample(
-                'Success Response (2FA Required)',
+                'Success Response (2FA Required - User Has 2FA)',
                 value={
                     'temp_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
                     'requires_2fa': True,
@@ -107,19 +114,33 @@ class CustomTokenObtainPairView(APIView):
                 response_only=True,
                 status_codes=['200'],
             ),
+            OpenApiExample(
+                'Success Response (2FA Enforcement - User Needs Setup)',
+                value={
+                    'setup_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                    'requires_2fa_setup': True,
+                    'message': 'Two-factor authentication is required. Use this token to set up 2FA at /auth/2fa/enable/',
+                    'allowed_endpoints': ['/auth/2fa/enable/', '/auth/2fa/enable/verify/', '/auth/2fa/status/']
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
         ],
         responses={
             200: OpenApiResponse(
-                description='Login successful. Returns JWT tokens or temporary token based on 2FA status.',
+                description='Login successful. Returns JWT tokens, temporary token, or setup token based on 2FA status.',
                 response=inline_serializer(
                     name='LoginSuccessResponse',
                     fields={
                         'access': serializers.CharField(help_text='JWT access token (expires in 15 min)'),
                         'refresh': serializers.CharField(help_text='JWT refresh token (expires in 7 days)'),
-                        'temp_token': serializers.CharField(help_text='Temporary 2FA token (only if 2FA enabled)'),
+                        'temp_token': serializers.CharField(help_text='Temporary 2FA token (only if user has 2FA enabled)'),
+                        'setup_token': serializers.CharField(help_text='Setup token (only if 2FA enforcement requires setup)'),
                         'requires_2fa': serializers.BooleanField(help_text='Whether 2FA verification is required'),
+                        'requires_2fa_setup': serializers.BooleanField(help_text='Whether user needs to setup 2FA first'),
                         'message': serializers.CharField(help_text='Status message'),
                         'expires_at': serializers.DateTimeField(help_text='When the 2FA code expires'),
+                        'allowed_endpoints': serializers.ListField(help_text='Endpoints allowed with setup token'),
                     }
                 )
             ),
@@ -198,12 +219,18 @@ class CustomTokenObtainPairView(APIView):
 
         # Check if 2FA is enforced and user doesn't have it enabled
         if settings_obj.enforce_2fa_for_all_users and not user.is_2fa_enabled:
+            # Generate a setup token that ONLY allows access to 2FA setup endpoints
+            # This token has 'setup_2fa' claim which is checked by middleware
+            temp_token = generate_temporary_2fa_token(user)
+
             return Response(
                 {
-                    'error': 'Two-factor authentication is required. Please enable 2FA at /auth/2fa/enable/',
-                    'required_action': 'enable_2fa'
+                    'setup_token': temp_token,
+                    'requires_2fa_setup': True,
+                    'message': 'Two-factor authentication is required. Use this token to set up 2FA at /auth/2fa/enable/',
+                    'allowed_endpoints': ['/auth/2fa/enable/', '/auth/2fa/enable/verify/', '/auth/2fa/status/']
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_200_OK
             )
 
         # Check if user has 2FA enabled

@@ -79,7 +79,7 @@ Click "Test Refresh" to get a new access token:
 
 #### 5. 2FA Flow (if enabled)
 
-If you have `REQUIRE_2FA_FOR_ALL_USERS=True` or the user has 2FA enabled:
+If you have 2FA enforcement enabled in Django admin (`/admin/users/twofactorsettings/`) or the user has 2FA enabled:
 
 1. After Google OAuth, you'll see the "2FA Required" screen
 2. A temporary token is displayed
@@ -110,7 +110,7 @@ If you have `REQUIRE_2FA_FOR_ALL_USERS=True` or the user has 2FA enabled:
 5. Click "Test API" - should now succeed
 
 #### Test 4: 2FA Authentication
-1. Enable 2FA in your account or set `REQUIRE_2FA_FOR_ALL_USERS=True`
+1. Enable 2FA in your account or enable 2FA enforcement in Django admin (`/admin/users/twofactorsettings/`)
 2. Click "Sign in with Google"
 3. Verify you see the "2FA Required" screen
 4. Check your email for the verification code

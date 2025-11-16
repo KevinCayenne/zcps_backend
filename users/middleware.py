@@ -147,6 +147,9 @@ class TemporaryTokenRestrictionMiddleware:
     Temporary 2FA tokens should ONLY be valid for:
     - /auth/2fa/verify/ - To complete 2FA verification during login
     - /auth/2fa/resend/ - To resend 2FA code during login
+    - /auth/2fa/enable/ - To enable 2FA (when enforcement requires setup)
+    - /auth/2fa/enable/verify/ - To verify 2FA setup
+    - /auth/2fa/status/ - To check 2FA status
 
     Using a temporary token on any other endpoint will result in 403 Forbidden.
 
@@ -163,8 +166,11 @@ class TemporaryTokenRestrictionMiddleware:
 
     # Paths that temporary 2FA tokens are allowed to access
     ALLOWED_PATHS = [
-        '/auth/2fa/verify/',    # Complete 2FA verification
-        '/auth/2fa/resend/',    # Resend 2FA code
+        '/auth/2fa/verify/',         # Complete 2FA verification during login
+        '/auth/2fa/resend/',         # Resend 2FA code during login
+        '/auth/2fa/enable/',         # Enable 2FA (for setup when enforcement is enabled)
+        '/auth/2fa/enable/verify/',  # Verify 2FA setup code
+        '/auth/2fa/status/',         # Check 2FA status
     ]
 
     def __init__(self, get_response):

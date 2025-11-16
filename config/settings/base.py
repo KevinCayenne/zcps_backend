@@ -314,9 +314,5 @@ REST_AUTH = {
 
 
 # Two-Factor Authentication Configuration
-# DEPRECATED: These settings will be migrated to database-based TwoFactorSettings model
-REQUIRE_2FA_FOR_ALL_USERS = config('REQUIRE_2FA_FOR_ALL_USERS', default=False, cast=bool)
-TWOFACTOR_CODE_EXPIRATION = config('TWOFACTOR_CODE_EXPIRATION', default=600, cast=int)  # 10 minutes
-TWOFACTOR_CODE_LENGTH = config('TWOFACTOR_CODE_LENGTH', default=6, cast=int)
-TWOFACTOR_MAX_FAILED_ATTEMPTS = config('TWOFACTOR_MAX_FAILED_ATTEMPTS', default=5, cast=int)
-TWOFACTOR_TEMPORARY_TOKEN_LIFETIME = config('TWOFACTOR_TEMPORARY_TOKEN_LIFETIME', default=10, cast=int)  # minutes
+# All 2FA settings are now managed via the database-based TwoFactorSettings model.
+# Configure 2FA settings at: /admin/users/twofactorsettings/
