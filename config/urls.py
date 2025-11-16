@@ -7,7 +7,7 @@ The `urlpatterns` list routes URLs to views. For more information please see:
 from django.contrib import admin
 from django.urls import path, include
 from users.views import LogoutView
-from users.oauth_views import GoogleLogin, GoogleCallback
+from users.oauth_views import oauth_login, GoogleCallback
 from users.twofactor_views import (
     enable_2fa, verify_setup_2fa, disable_2fa, get_2fa_status,
     verify_2fa_login, resend_2fa_code
@@ -23,6 +23,9 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
+    # Allauth URLs (required for OAuth views)
+    path('accounts/', include('allauth.urls')),
+
     # Custom Djoser endpoints with JWT token blacklisting
     path('auth/', include('users.urls')),
 
@@ -35,7 +38,7 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='logout'),
 
     # Google OAuth endpoints
-    path('auth/google/', GoogleLogin.as_view(), name='google_login'),
+    path('auth/google/', oauth_login, name='google_login'),
     path('auth/google/callback/', GoogleCallback.as_view(), name='google_callback'),
 
     # Two-Factor Authentication endpoints

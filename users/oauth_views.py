@@ -6,10 +6,11 @@ Handles OAuth initiation and callback with JWT token generation.
 
 import logging
 from django.shortcuts import redirect
+from django.http import HttpResponseRedirect
 from django.views import View
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
-from dj_rest_auth.registration.views import SocialLoginView, SocialConnectView
+from allauth.socialaccount.providers.oauth2.views import OAuth2LoginView
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .oauth_adapters import (
     build_error_redirect_url,
@@ -23,74 +24,9 @@ from users.models import TwoFactorSettings
 logger = logging.getLogger(__name__)
 
 
-@extend_schema(
-    tags=['Authentication'],
-    summary='Initiate Google OAuth login (Browser redirect)',
-    description="""
-    **IMPORTANT: This endpoint requires a browser and cannot be tested directly in Swagger UI.**
-
-    Initiates the Google OAuth 2.0 authentication flow.
-
-    **How to Use:**
-    1. Open this URL in a browser: `http://localhost:8000/auth/google/`
-    2. User is redirected to Google's consent screen
-    3. User authorizes the application
-    4. User is redirected back to `/auth/google/callback/`
-    5. Backend creates/links user account
-    6. User is redirected to frontend with JWT tokens or temp_token
-
-    **OAuth Flow:**
-    ```
-    User clicks "Sign in with Google"
-    ↓
-    Frontend redirects to: GET /auth/google/
-    ↓
-    Backend redirects to: Google OAuth consent screen
-    ↓
-    User authorizes application
-    ↓
-    Google redirects to: GET /auth/google/callback/?code=...
-    ↓
-    Backend processes authorization code
-    ↓
-    Backend redirects to frontend with tokens
-    ```
-
-    **Scopes Requested:**
-    - `openid`: User identification
-    - `profile`: Basic profile information
-    - `email`: Email address
-
-    **Redirect After Success:**
-    - Without 2FA: `{FRONTEND_URL}/auth/callback?access=...&refresh=...`
-    - With 2FA: `{FRONTEND_URL}/auth/callback?temp_token=...&requires_2fa=true`
-
-    **Account Linking:**
-    - If email exists: Google account is linked to existing user
-    - If new email: New user account is created
-    - Email is auto-verified for OAuth users
-
-    **Frontend Integration:**
-    See `/docs/google-oauth-frontend-integration.md` for complete guide.
-    """,
-    responses={
-        302: OpenApiResponse(description='Redirect to Google OAuth consent screen'),
-    }
-)
-class GoogleLogin(SocialLoginView):
-    """
-    Google OAuth login view.
-
-    Initiates Google OAuth flow by redirecting to Google's consent screen.
-    """
-    adapter_class = GoogleOAuth2Adapter
-    callback_url = None  # Will be set in get_callback_url
-    client_class = OAuth2Client
-
-    def get_callback_url(self, request, app):
-        """Get the callback URL for OAuth."""
-        # Use the current request to build absolute callback URL
-        return request.build_absolute_uri('/auth/google/callback/')
+# Create Google OAuth login view using django-allauth's OAuth2LoginView
+# This handles the GET /auth/google/ endpoint that redirects to Google's consent screen
+oauth_login = OAuth2LoginView.adapter_view(GoogleOAuth2Adapter)
 
 
 class GoogleCallback(View):
@@ -109,57 +45,60 @@ class GoogleCallback(View):
                 error = request.GET.get('error')
                 if error == 'access_denied':
                     logger.info("User denied OAuth access")
-                    return redirect(build_error_redirect_url(
+                    return HttpResponseRedirect(build_error_redirect_url(
                         'access_denied',
                         'You denied access to your Google account.'
                     ))
                 else:
                     logger.error(f"OAuth error: {error}")
-                    return redirect(build_error_redirect_url(
+                    return HttpResponseRedirect(build_error_redirect_url(
                         'oauth_error',
                         f'OAuth error: {error}'
                     ))
 
             # Process the OAuth callback using django-allauth
-            from allauth.socialaccount.providers.google.views import oauth2_callback
             from allauth.socialaccount.helpers import complete_social_login
-            from allauth.socialaccount.models import SocialLogin
+            import requests
 
             # Get the code from query parameters
             code = request.GET.get('code')
             if not code:
                 logger.error("No authorization code in callback")
-                return redirect(build_error_redirect_url(
+                return HttpResponseRedirect(build_error_redirect_url(
                     'invalid_request',
                     'No authorization code provided.'
                 ))
 
-            # Exchange code for tokens and get user info
+            # Get the Google OAuth app credentials from allauth
             adapter = GoogleOAuth2Adapter(request)
-            app = adapter.get_provider().get_app(request)
-            callback_url = request.build_absolute_uri('/auth/google/callback/')
+            provider = adapter.get_provider()
+            app = provider.app
 
-            client = OAuth2Client(
-                request,
-                app.client_id,
-                app.secret,
-                adapter.access_token_method,
-                adapter.access_token_url,
-                callback_url,
-                adapter.scope_delimiter,
-                scope=adapter.get_provider().get_scope(request),
-            )
+            # Exchange authorization code for access token using Google's token endpoint
+            token_url = 'https://oauth2.googleapis.com/token'
+            token_data = {
+                'client_id': app.client_id,
+                'client_secret': app.secret,
+                'code': code,
+                'grant_type': 'authorization_code',
+                'redirect_uri': request.build_absolute_uri('/auth/google/callback/'),
+            }
 
-            # Get access token
-            token = client.get_access_token(code)
-            access_token = token['access_token']
+            token_response = requests.post(token_url, data=token_data)
+            if token_response.status_code != 200:
+                logger.error(f"Token exchange failed: {token_response.text}")
+                return HttpResponseRedirect(build_error_redirect_url(
+                    'token_exchange_failed',
+                    'Failed to exchange authorization code for tokens.'
+                ))
 
-            # Complete social login (this will create/link user)
-            login = adapter.complete_login(request, app, access_token, response=token)
-            login.token = token
+            token = token_response.json()
 
-            # Process the login
-            ret = complete_social_login(request, login)
+            # Complete the login with user data
+            login = adapter.complete_login(request, app, token, response=token)
+
+            # Process the social login (creates/updates user)
+            complete_social_login(request, login)
 
             # Get the logged-in user
             if hasattr(login, 'account') and hasattr(login.account, 'user'):
@@ -168,7 +107,7 @@ class GoogleCallback(View):
                 user = request.user
             else:
                 logger.error("Could not retrieve user after OAuth")
-                return redirect(build_error_redirect_url(
+                return HttpResponseRedirect(build_error_redirect_url(
                     'server_error',
                     'An error occurred during authentication.'
                 ))
@@ -202,7 +141,7 @@ class GoogleCallback(View):
                     'requires_2fa': 'true',
                     'expires_at': twofactor_code.expires_at.isoformat()
                 })
-                return redirect(f"{base_url}?{params}")
+                return HttpResponseRedirect(f"{base_url}?{params}")
 
             # No 2FA required - generate standard JWT tokens
             access_token_jwt, refresh_token_jwt = generate_jwt_tokens(user)
@@ -210,11 +149,11 @@ class GoogleCallback(View):
             logger.info(f"OAuth successful for user: {user.email}")
 
             # Redirect to frontend with full JWT tokens
-            return redirect(build_success_redirect_url(access_token_jwt, refresh_token_jwt))
+            return HttpResponseRedirect(build_success_redirect_url(access_token_jwt, refresh_token_jwt))
 
         except Exception as e:
             logger.error(f"Error in Google OAuth callback: {str(e)}", exc_info=True)
-            return redirect(build_error_redirect_url(
+            return HttpResponseRedirect(build_error_redirect_url(
                 'server_error',
                 'An unexpected error occurred during authentication.'
             ))

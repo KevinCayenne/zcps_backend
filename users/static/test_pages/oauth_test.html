@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth Test - Django Auth Boilerplate</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .token-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .token-box label {
+            display: block;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .token-box .token {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #333;
+            border: 1px solid #ced4da;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        .button:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+
+        .button.secondary {
+            background: #6c757d;
+        }
+
+        .button.secondary:hover {
+            background: #5a6268;
+        }
+
+        .button.success {
+            background: #28a745;
+        }
+
+        .button.success:hover {
+            background: #218838;
+        }
+
+        .google-btn {
+            background: white;
+            color: #444;
+            border: 1px solid #ddd;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .google-btn:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .google-icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        .instructions {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 14px;
+            color: #495057;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .params-list {
+            margin-top: 15px;
+        }
+
+        .params-list dt {
+            font-weight: 600;
+            color: #495057;
+            margin-top: 10px;
+        }
+
+        .params-list dd {
+            margin-left: 20px;
+            color: #6c757d;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Google OAuth Test Page</h1>
+        <p class="subtitle">Django Auth Boilerplate - OAuth Testing Tool</p>
+
+        <!-- Welcome State -->
+        <div id="welcomeState">
+            <div class="status info">
+                <strong>Ready to test Google OAuth!</strong><br>
+                Click the button below to start the authentication flow.
+            </div>
+
+            <div class="instructions">
+                <strong>How to use this page:</strong>
+                <ol>
+                    <li>Make sure your Django server is running on <code>http://localhost:8000</code></li>
+                    <li>Click "Sign in with Google" below</li>
+                    <li>Authorize the app with your Google account</li>
+                    <li>You'll be redirected back here with your JWT tokens</li>
+                    <li>Copy the tokens to use in API testing</li>
+                </ol>
+            </div>
+
+            <button class="google-btn" onclick="startOAuth()">
+                <svg class="google-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                    <path fill="none" d="M0 0h48v48H0z"></path>
+                </svg>
+                Sign in with Google
+            </button>
+        </div>
+
+        <!-- Success State (with tokens) -->
+        <div id="successState" class="hidden">
+            <div class="status success">
+                <strong>✓ Authentication Successful!</strong><br>
+                You've successfully authenticated via Google OAuth.
+            </div>
+
+            <div class="token-box">
+                <label>Access Token (expires in 15 min)</label>
+                <div class="token" id="accessToken"></div>
+                <button class="button success" onclick="copyToken('accessToken')">Copy Access Token</button>
+            </div>
+
+            <div class="token-box">
+                <label>Refresh Token (expires in 7 days)</label>
+                <div class="token" id="refreshToken"></div>
+                <button class="button success" onclick="copyToken('refreshToken')">Copy Refresh Token</button>
+            </div>
+
+            <div class="token-box" id="decodedTokenBox" style="display: none;">
+                <label>Decoded Access Token Payload</label>
+                <div class="token" id="decodedToken" style="font-size: 11px;"></div>
+            </div>
+
+            <button class="button secondary" onclick="reset()">Test Again</button>
+        </div>
+
+        <!-- 2FA Required State -->
+        <div id="twoFactorState" class="hidden">
+            <div class="status warning">
+                <strong>⚠ Two-Factor Authentication Required</strong><br>
+                A verification code has been sent to your email.
+            </div>
+
+            <div class="token-box">
+                <label>Temporary Token</label>
+                <div class="token" id="tempToken"></div>
+            </div>
+
+            <div class="instructions">
+                <strong>Next steps:</strong>
+                <ol>
+                    <li>Check your email for the 6-digit verification code</li>
+                    <li>Enter the code below to complete verification</li>
+                    <li>After verification, you'll receive full JWT tokens</li>
+                </ol>
+            </div>
+
+            <div style="margin: 20px 0;">
+                <label style="display: block; margin-bottom: 10px; font-weight: 600;">Enter 2FA Code:</label>
+                <input type="text" id="twoFactorCode" placeholder="000000" maxlength="6"
+                       style="padding: 12px; border: 1px solid #ced4da; border-radius: 6px; width: 150px; font-size: 18px; text-align: center; letter-spacing: 5px;">
+                <button class="button success" onclick="verify2FA()" style="margin-left: 10px;">Verify Code</button>
+            </div>
+
+            <button class="button" onclick="copyToken('tempToken')">Copy Temp Token</button>
+            <button class="button secondary" onclick="reset()">Start Over</button>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden">
+            <div class="status error">
+                <strong>✗ Authentication Failed</strong><br>
+                <span id="errorMessage"></span>
+            </div>
+
+            <div id="errorDetails" class="params-list hidden">
+                <strong>Error Details:</strong>
+                <dl id="errorParams"></dl>
+            </div>
+
+            <button class="button secondary" onclick="reset()">Try Again</button>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="hidden">
+            <div class="status info">
+                <strong>Processing...</strong><br>
+                Please wait while we complete the authentication.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const BACKEND_URL = 'http://localhost:8000';
+        const OAUTH_ENDPOINT = `${BACKEND_URL}/auth/google/`;
+
+        // Parse URL parameters
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            const result = {};
+            for (const [key, value] of params) {
+                result[key] = value;
+            }
+            return result;
+        }
+
+        // Start OAuth flow
+        function startOAuth() {
+            // Simple GET request - redirect to backend OAuth endpoint
+            window.location.href = OAUTH_ENDPOINT;
+        }
+
+        // Copy token to clipboard
+        function copyToken(elementId) {
+            const tokenElement = document.getElementById(elementId);
+            const token = tokenElement.textContent;
+
+            navigator.clipboard.writeText(token).then(() => {
+                const originalText = event.target.textContent;
+                event.target.textContent = '✓ Copied!';
+                setTimeout(() => {
+                    event.target.textContent = originalText;
+                }, 2000);
+            });
+        }
+
+        // Verify 2FA code
+        function verify2FA() {
+            const code = document.getElementById('twoFactorCode').value;
+            const tempToken = document.getElementById('tempToken').textContent;
+
+            if (!code || code.length !== 6) {
+                alert('Please enter a 6-digit verification code');
+                return;
+            }
+
+            fetch(`${BACKEND_URL}/auth/2fa/verify/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${tempToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code: code })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(JSON.stringify(data, null, 2));
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.access && data.refresh) {
+                    // Switch to success state
+                    document.getElementById('twoFactorState').classList.add('hidden');
+                    document.getElementById('successState').classList.remove('hidden');
+                    document.getElementById('accessToken').textContent = data.access;
+                    document.getElementById('refreshToken').textContent = data.refresh;
+                    alert('✓ 2FA Verification Successful!\n\nYou now have full access tokens.');
+                } else {
+                    alert('Unexpected response: ' + JSON.stringify(data, null, 2));
+                }
+            })
+            .catch(error => {
+                alert('2FA Verification Failed:\n' + error.message);
+            });
+        }
+
+        // Reset to initial state
+        function reset() {
+            // Clear URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            // Hide all states
+            document.getElementById('welcomeState').classList.remove('hidden');
+            document.getElementById('successState').classList.add('hidden');
+            document.getElementById('twoFactorState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+            document.getElementById('loadingState').classList.add('hidden');
+        }
+
+        // Handle OAuth callback on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = getUrlParams();
+
+            // Check for success with full tokens
+            if (params.access && params.refresh) {
+                document.getElementById('welcomeState').classList.add('hidden');
+                document.getElementById('successState').classList.remove('hidden');
+                document.getElementById('accessToken').textContent = params.access;
+                document.getElementById('refreshToken').textContent = params.refresh;
+            }
+            // Check for 2FA required
+            else if (params.temp_token && params.requires_2fa === 'true') {
+                document.getElementById('welcomeState').classList.add('hidden');
+                document.getElementById('twoFactorState').classList.remove('hidden');
+                document.getElementById('tempToken').textContent = params.temp_token;
+            }
+            // Check for error
+            else if (params.error) {
+                document.getElementById('welcomeState').classList.add('hidden');
+                document.getElementById('errorState').classList.remove('hidden');
+
+                const errorMessages = {
+                    'access_denied': 'You denied access to your Google account.',
+                    'oauth_error': 'An OAuth error occurred.',
+                    'server_error': 'A server error occurred during authentication.',
+                    'invalid_request': 'Invalid OAuth request.'
+                };
+
+                const errorMessage = params.error_description || errorMessages[params.error] || 'An unknown error occurred.';
+                document.getElementById('errorMessage').textContent = errorMessage;
+
+                // Show error details if available
+                if (Object.keys(params).length > 1) {
+                    document.getElementById('errorDetails').classList.remove('hidden');
+                    const errorParamsEl = document.getElementById('errorParams');
+                    errorParamsEl.innerHTML = '';
+
+                    for (const [key, value] of Object.entries(params)) {
+                        const dt = document.createElement('dt');
+                        dt.textContent = key;
+                        const dd = document.createElement('dd');
+                        dd.textContent = value;
+                        errorParamsEl.appendChild(dt);
+                        errorParamsEl.appendChild(dd);
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
