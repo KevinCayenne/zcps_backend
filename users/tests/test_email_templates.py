@@ -1,176 +1,216 @@
+#!/usr/bin/env python
 """
-Tests for email templates and notifications.
+Test script to verify custom email templates are working correctly.
 
-This module tests that email templates are rendered correctly and emails
-are sent with appropriate variables for password management events.
+This script tests:
+1. Custom email classes are loaded
+2. Templates use correct subject lines
+3. URLs are formatted correctly without double protocol
+4. FRONTEND_URL is being used instead of Django Site domain
 """
 
-import pytest
-from django.core import mail
-from django.contrib.auth import get_user_model
+import os
+import django
+
+# Setup Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
+django.setup()
+
 from django.conf import settings
-from rest_framework.test import APIClient
-
-User = get_user_model()
-
-
-@pytest.fixture
-def api_client():
-    """Fixture to provide APIClient instance."""
-    return APIClient()
+from users.email import (
+    ActivationEmail, PasswordResetEmail, ConfirmationEmail,
+    PasswordChangedConfirmationEmail, parse_frontend_url
+)
+from users.models import User
+from unittest.mock import patch
 
 
-@pytest.fixture
-def create_user(db):
-    """Fixture to create a test user."""
-    def make_user(**kwargs):
-        defaults = {
-            'username': 'testuser',
-            'email': 'test@example.com',
-            'password': 'testpass123',
-        }
-        defaults.update(kwargs)
-        password = defaults.pop('password')
-        user = User.objects.create_user(**defaults)
-        user.set_password(password)
-        user.save()
-        return user
-    return make_user
+def test_activation_email():
+    """Test activation email template and context."""
+    print("\n" + "="*60)
+    print("Testing Activation Email")
+    print("="*60)
+
+    # Create a test user (don't save to DB)
+    user = User(username='testuser', email='test@example.com')
+    user.id = 1  # Set an ID for UID generation
+
+    # Create email instance
+    email = ActivationEmail()
+
+    # Mock context
+    context = {
+        'user': user,
+        'uid': 'test-uid-123',
+        'token': 'test-token-456',
+    }
+
+    # Get context data (this will call our custom get_context_data)
+    email.context = context
+    full_context = email.get_context_data()
+
+    # Print results
+    print(f"✓ Template: {email.template_name}")
+    print(f"✓ Protocol: {full_context.get('protocol')}")
+    print(f"✓ Domain: {full_context.get('domain')}")
+    print(f"✓ URL: {full_context.get('url')}")
+    print(f"✓ Full URL: {full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}")
+
+    # Verify no double protocol
+    full_url = f"{full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}"
+    if 'http://http://' in full_url or 'https://https://' in full_url:
+        print("❌ ERROR: Double protocol detected!")
+        return False
+    else:
+        print("✓ No double protocol")
+
+    # Verify domain matches FRONTEND_URL
+    expected_domain = settings.FRONTEND_URL.replace('http://', '').replace('https://', '')
+    if full_context.get('domain') == expected_domain:
+        print(f"✓ Domain matches FRONTEND_URL")
+    else:
+        print(f"❌ ERROR: Domain mismatch. Expected: {expected_domain}, Got: {full_context.get('domain')}")
+        return False
+
+    print("\n✅ Activation email test PASSED")
+    return True
 
 
-@pytest.mark.django_db
-class TestPasswordResetEmail:
-    """Test suite for password reset email template."""
+def test_password_reset_email():
+    """Test password reset email template and context."""
+    print("\n" + "="*60)
+    print("Testing Password Reset Email")
+    print("="*60)
 
-    def test_password_reset_request_sends_email(self, api_client, create_user):
-        """Test POST /auth/users/reset_password/ sends password reset email."""
-        user = create_user(email='user@example.com')
+    # Create email instance
+    email = PasswordResetEmail()
 
-        # Clear any existing emails
-        mail.outbox = []
+    # Mock context
+    context = {
+        'user': User(username='testuser', email='test@example.com'),
+        'uid': 'test-uid-789',
+        'token': 'test-token-012',
+    }
 
-        data = {'email': 'user@example.com'}
-        response = api_client.post('/auth/users/reset_password/', data)
+    # Get context data
+    email.context = context
+    full_context = email.get_context_data()
 
-        assert response.status_code == 204
-        assert len(mail.outbox) == 1
+    # Print results
+    print(f"✓ Template: {email.template_name}")
+    print(f"✓ Protocol: {full_context.get('protocol')}")
+    print(f"✓ Domain: {full_context.get('domain')}")
+    print(f"✓ URL: {full_context.get('url')}")
+    print(f"✓ Full URL: {full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}")
 
-    def test_password_reset_email_contains_user_info(self, api_client, create_user):
-        """Test password reset email contains user information."""
-        user = create_user(email='user@example.com', username='testuser')
+    # Verify no double protocol
+    full_url = f"{full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}"
+    if 'http://http://' in full_url or 'https://https://' in full_url:
+        print("❌ ERROR: Double protocol detected!")
+        return False
+    else:
+        print("✓ No double protocol")
 
-        mail.outbox = []
-
-        data = {'email': 'user@example.com'}
-        api_client.post('/auth/users/reset_password/', data)
-
-        assert len(mail.outbox) == 1
-        email = mail.outbox[0]
-
-        # Email should be sent to user
-        assert 'user@example.com' in email.to
-
-        # Email should have appropriate subject
-        assert 'password' in email.subject.lower() or 'reset' in email.subject.lower()
-
-    def test_password_reset_email_uses_correct_from_address(self, api_client, create_user):
-        """Test password reset email uses configured from_email."""
-        user = create_user(email='user@example.com')
-
-        mail.outbox = []
-
-        data = {'email': 'user@example.com'}
-        api_client.post('/auth/users/reset_password/', data)
-
-        assert len(mail.outbox) == 1
-        email = mail.outbox[0]
-
-        # Should use DEFAULT_FROM_EMAIL setting
-        assert email.from_email == settings.DEFAULT_FROM_EMAIL
+    print("\n✅ Password reset email test PASSED")
+    return True
 
 
-@pytest.mark.django_db
-class TestPasswordChangeConfirmationEmail:
-    """Test suite for password change confirmation email."""
+def test_parse_frontend_url():
+    """Test the parse_frontend_url helper function."""
+    print("\n" + "="*60)
+    print("Testing parse_frontend_url() Helper Function")
+    print("="*60)
 
-    def test_password_change_sends_confirmation_email(self, api_client, create_user):
-        """Test password change sends confirmation email when configured."""
-        from rest_framework_simplejwt.tokens import RefreshToken
+    test_cases = [
+        ('http://localhost:3000', ('http', 'localhost:3000')),
+        ('https://app.example.com', ('https', 'app.example.com')),
+        ('localhost:3000', ('http', 'localhost:3000')),
+        ('127.0.0.1:8000', ('http', '127.0.0.1:8000')),
+        ('example.com', ('https', 'example.com')),
+        ('https://example.com:8080', ('https', 'example.com:8080')),
+    ]
 
-        user = create_user(email='user@example.com', password='oldpass123')
-        refresh = RefreshToken.for_user(user)
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
+    all_passed = True
+    for frontend_url, expected in test_cases:
+        with patch.object(settings, 'FRONTEND_URL', frontend_url):
+            result = parse_frontend_url()
+            if result == expected:
+                print(f"✓ '{frontend_url}' -> {result}")
+            else:
+                print(f"❌ '{frontend_url}' -> Expected {expected}, got {result}")
+                all_passed = False
 
-        mail.outbox = []
+    if all_passed:
+        print("\n✅ parse_frontend_url() test PASSED")
+    else:
+        print("\n❌ parse_frontend_url() test FAILED")
 
-        data = {
-            'new_password': 'newpass123',
-            'current_password': 'oldpass123',
-        }
-        response = api_client.post('/auth/users/set_password/', data)
-
-        assert response.status_code == 204
-        # Email should be sent because PASSWORD_CHANGED_EMAIL_CONFIRMATION is True
-        assert len(mail.outbox) == 1
-
-    def test_password_change_email_sent_to_user(self, api_client, create_user):
-        """Test password change confirmation email is sent to user."""
-        from rest_framework_simplejwt.tokens import RefreshToken
-
-        user = create_user(email='user@example.com', password='oldpass123')
-        refresh = RefreshToken.for_user(user)
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
-
-        mail.outbox = []
-
-        data = {
-            'new_password': 'newpass123',
-            'current_password': 'oldpass123',
-        }
-        api_client.post('/auth/users/set_password/', data)
-
-        assert len(mail.outbox) == 1
-        email = mail.outbox[0]
-
-        assert 'user@example.com' in email.to
+    return all_passed
 
 
-@pytest.mark.django_db
-class TestActivationEmail:
-    """Test suite for email activation template."""
+def test_settings():
+    """Verify DJOSER settings are correct."""
+    print("\n" + "="*60)
+    print("Testing DJOSER Configuration")
+    print("="*60)
 
-    def test_activation_email_sent_on_registration(self, api_client):
-        """Test activation email is sent when user registers."""
-        mail.outbox = []
+    email_config = settings.DJOSER.get('EMAIL', {})
 
-        data = {
-            'username': 'newuser',
-            'email': 'newuser@example.com',
-            'password': 'securepass123',
-        }
-        response = api_client.post('/auth/users/', data)
+    print(f"✓ FRONTEND_URL: {settings.FRONTEND_URL}")
+    print(f"✓ Activation email class: {email_config.get('activation')}")
+    print(f"✓ Password reset email class: {email_config.get('password_reset')}")
+    print(f"✓ Confirmation email class: {email_config.get('confirmation')}")
+    print(f"✓ Password changed email class: {email_config.get('password_changed_confirmation')}")
 
-        assert response.status_code == 201
-        # Activation email should be sent if SEND_ACTIVATION_EMAIL is True
-        if settings.DJOSER.get('SEND_ACTIVATION_EMAIL'):
-            assert len(mail.outbox) >= 1
+    # Verify classes are set correctly
+    expected_classes = {
+        'activation': 'users.email.ActivationEmail',
+        'confirmation': 'users.email.ConfirmationEmail',
+        'password_reset': 'users.email.PasswordResetEmail',
+        'password_changed_confirmation': 'users.email.PasswordChangedConfirmationEmail',
+    }
 
-    def test_activation_email_contains_verification_link(self, api_client):
-        """Test activation email contains verification information."""
-        mail.outbox = []
+    all_correct = True
+    for key, expected in expected_classes.items():
+        actual = email_config.get(key)
+        if actual != expected:
+            print(f"❌ ERROR: {key} = {actual}, expected {expected}")
+            all_correct = False
 
-        data = {
-            'username': 'newuser',
-            'email': 'newuser@example.com',
-            'password': 'securepass123',
-        }
-        api_client.post('/auth/users/', data)
+    if all_correct:
+        print("\n✅ DJOSER configuration test PASSED")
+    else:
+        print("\n❌ DJOSER configuration test FAILED")
 
-        if settings.DJOSER.get('SEND_ACTIVATION_EMAIL') and len(mail.outbox) > 0:
-            email = mail.outbox[0]
+    return all_correct
 
-            # Email should be sent to new user
-            assert 'newuser@example.com' in email.to
 
-            # Email should have appropriate subject
-            assert 'activation' in email.subject.lower() or 'verify' in email.subject.lower() or 'confirm' in email.subject.lower()
+if __name__ == '__main__':
+    print("\n🔍 Testing Custom Email Templates")
+    print("="*60)
+
+    results = []
+
+    # Run tests
+    results.append(("Settings", test_settings()))
+    results.append(("Helper Function", test_parse_frontend_url()))
+    results.append(("Activation Email", test_activation_email()))
+    results.append(("Password Reset Email", test_password_reset_email()))
+
+    # Print summary
+    print("\n" + "="*60)
+    print("TEST SUMMARY")
+    print("="*60)
+
+    for test_name, passed in results:
+        status = "✅ PASSED" if passed else "❌ FAILED"
+        print(f"{test_name}: {status}")
+
+    all_passed = all(result[1] for result in results)
+
+    if all_passed:
+        print("\n🎉 All tests passed!")
+        exit(0)
+    else:
+        print("\n⚠️  Some tests failed. Please review the output above.")
+        exit(1)

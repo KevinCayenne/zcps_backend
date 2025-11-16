@@ -9,6 +9,35 @@ from django.conf import settings
 from djoser import email
 
 
+def parse_frontend_url():
+    """
+    Parse FRONTEND_URL to extract protocol and domain separately.
+
+    This prevents double protocol issues when templates use {{ protocol }}://{{ domain }}
+    format. The FRONTEND_URL can be specified with or without protocol.
+
+    Returns:
+        tuple: (protocol, domain) where protocol is 'http' or 'https',
+               and domain is the URL without protocol
+
+    Examples:
+        - 'http://localhost:3000' -> ('http', 'localhost:3000')
+        - 'https://app.example.com' -> ('https', 'app.example.com')
+        - 'localhost:3000' -> ('http', 'localhost:3000')
+        - 'example.com' -> ('https', 'example.com')
+    """
+    frontend_url = settings.FRONTEND_URL
+
+    if frontend_url.startswith('http://'):
+        return 'http', frontend_url.replace('http://', '')
+    elif frontend_url.startswith('https://'):
+        return 'https', frontend_url.replace('https://', '')
+    else:
+        # No protocol specified, assume http for localhost, https otherwise
+        protocol = 'http' if 'localhost' in frontend_url or '127.0.0.1' in frontend_url else 'https'
+        return protocol, frontend_url
+
+
 class ActivationEmail(email.ActivationEmail):
     """
     Custom activation email that uses FRONTEND_URL.
@@ -22,13 +51,13 @@ class ActivationEmail(email.ActivationEmail):
         context = super().get_context_data()
 
         # Use FRONTEND_URL from settings instead of Django Site
-        user = context.get('user')
         uid = context.get('uid')
         token = context.get('token')
-        print(settings.FRONTEND_URL)
 
-        # Override domain
-        context['domain'] = settings.FRONTEND_URL
+        # Parse FRONTEND_URL to extract protocol and domain
+        protocol, domain = parse_frontend_url()
+        context['protocol'] = protocol
+        context['domain'] = domain
 
         # Reconstruct URL using FRONTEND_URL
         activation_url = settings.DJOSER.get('ACTIVATION_URL', 'auth/users/activation/{uid}/{token}')
@@ -62,8 +91,10 @@ class PasswordResetEmail(email.PasswordResetEmail):
         uid = context.get('uid')
         token = context.get('token')
 
-        # Override domain
-        context['domain'] = settings.FRONTEND_URL
+        # Parse FRONTEND_URL to extract protocol and domain
+        protocol, domain = parse_frontend_url()
+        context['protocol'] = protocol
+        context['domain'] = domain
 
         # Reconstruct URL using FRONTEND_URL
         reset_url = settings.DJOSER.get('PASSWORD_RESET_CONFIRM_URL', 'password/reset/confirm/{uid}/{token}')
@@ -84,7 +115,9 @@ class PasswordChangedConfirmationEmail(email.PasswordChangedConfirmationEmail):
         """Override to use FRONTEND_URL instead of Django Site domain."""
         context = super().get_context_data()
 
-        # Override domain
-        context['domain'] = settings.FRONTEND_URL
+        # Parse FRONTEND_URL to extract protocol and domain
+        protocol, domain = parse_frontend_url()
+        context['protocol'] = protocol
+        context['domain'] = domain
 
         return context
