@@ -312,7 +312,8 @@ def verify_setup_2fa(request):
     Disable two-factor authentication for your account.
 
     **Security Requirements:**
-    - Requires current password confirmation
+    - **For regular users:** Requires current password confirmation
+    - **For OAuth users (Google login):** No password required (OAuth users don't have passwords)
     - Only works if 2FA is currently enabled
 
     **What Happens:**
@@ -324,12 +325,18 @@ def verify_setup_2fa(request):
     **Important Notes:**
     - If system-wide 2FA enforcement is enabled, you will not be able to log in after disabling 2FA
     - Check with administrator before disabling if enforcement is active
+    - OAuth users can disable 2FA without providing a password (they authenticate via Google)
     """,
     request=TwoFactorDisableSerializer,
     examples=[
         OpenApiExample(
-            'Disable 2FA',
+            'Disable 2FA (Regular User)',
             value={'password': 'SecurePass123!'},
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Disable 2FA (OAuth User)',
+            value={},
             request_only=True,
         ),
         OpenApiExample(
@@ -350,7 +357,7 @@ def verify_setup_2fa(request):
             )
         ),
         400: OpenApiResponse(
-            description='Bad request - Invalid password or 2FA not enabled',
+            description='Bad request - Invalid password, missing password (for non-OAuth users), or 2FA not enabled',
             response=inline_serializer(
                 name='Disable2FABadRequestResponse',
                 fields={
@@ -367,7 +374,7 @@ def disable_2fa(request):
     """
     Disable 2FA for authenticated user.
 
-    Requires password confirmation for security.
+    Requires password confirmation for security (not required for OAuth users).
     """
     user = request.user
     serializer = TwoFactorDisableSerializer(data=request.data)
@@ -381,16 +388,27 @@ def disable_2fa(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Verify password
-    password = serializer.validated_data['password']
-    if not user.check_password(password):
-        return Response(
-            {'error': 'Invalid password.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # Check if user is OAuth user (has unusable password)
+    is_oauth_user = not user.has_usable_password()
+
+    # Verify password for non-OAuth users
+    if not is_oauth_user:
+        password = serializer.validated_data.get('password')
+        if not password:
+            return Response(
+                {'error': 'Password is required for non-OAuth users.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not user.check_password(password):
+            return Response(
+                {'error': 'Invalid password.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # Disable 2FA
     user.is_2fa_enabled = False
+    user.twofa_setup_date = None
+    user.preferred_2fa_method = None
     user.save()
 
     # Invalidate any unused codes

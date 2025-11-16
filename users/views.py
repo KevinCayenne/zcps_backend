@@ -748,7 +748,6 @@ class CustomUserViewSet(UserViewSet):
         - Only works for inactive accounts
         - Previous activation links become invalid
         - New token expires in 24 hours
-        - Rate limiting may apply
 
         **After Receiving Email:**
         - Click activation link or call `/auth/users/activation/`
@@ -809,7 +808,6 @@ class CustomUserViewSet(UserViewSet):
 
         **Security:**
         - Doesn't reveal if email exists in system
-        - Rate limiting prevents abuse
         - Tokens are cryptographically secure
         """,
         request=inline_serializer(

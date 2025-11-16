@@ -794,11 +794,21 @@ Authorization: Bearer {access_token}
 Authorization: Bearer {temp_token}
 ```
 
-**Expected Response:** `401 Unauthorized`
+**Expected Response:** `403 Forbidden`
+```json
+{
+  "error": "This temporary token can only be used for 2FA verification endpoints.",
+  "allowed_endpoints": [
+    "/auth/2fa/verify/",
+    "/auth/2fa/resend/"
+  ],
+  "detail": "Please complete 2FA verification at /auth/2fa/verify/ to obtain full access tokens."
+}
+```
 
 **Validation:**
 - ✅ Temporary tokens only work for 2FA verification endpoints
-- ✅ Regular endpoints reject temp tokens
+- ✅ Regular endpoints reject temp tokens with clear error message
 
 ---
 

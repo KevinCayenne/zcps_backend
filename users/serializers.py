@@ -162,13 +162,13 @@ class TwoFactorDisableSerializer(serializers.Serializer):
     """
     Serializer for disabling 2FA on user account.
 
-    Requires password confirmation for security.
+    Requires password confirmation for security (not required for OAuth users).
     """
 
     password = serializers.CharField(
-        required=True,
+        required=False,
         write_only=True,
-        help_text='Current password for confirmation'
+        help_text='Current password for confirmation (required for non-OAuth users, optional for OAuth users)'
     )
 
 

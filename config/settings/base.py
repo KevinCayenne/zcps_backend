@@ -66,6 +66,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',  # Required by allauth
+    'users.middleware.TemporaryTokenRestrictionMiddleware',  # Restrict temporary 2FA tokens
     'users.middleware.TwoFactorEnforcementMiddleware',  # 2FA enforcement middleware
 ]
 

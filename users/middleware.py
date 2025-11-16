@@ -1,12 +1,14 @@
 """
-Middleware for Two-Factor Authentication enforcement.
+Middleware for Two-Factor Authentication enforcement and temporary token restriction.
 
 Blocks authenticated users from accessing protected endpoints when 2FA is enforced
-but the user hasn't enabled 2FA.
+but the user hasn't enabled 2FA. Also restricts temporary 2FA tokens to specific endpoints.
 """
 
 import logging
 from django.http import JsonResponse
+from rest_framework_simplejwt.tokens import UntypedToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from users.models import TwoFactorSettings
 from users.twofactor_utils import get_twofactor_settings
 
@@ -134,5 +136,108 @@ class TwoFactorEnforcementMiddleware:
         """
         for exempt_path in self.EXEMPT_PATHS:
             if path.startswith(exempt_path):
+                return True
+        return False
+
+
+class TemporaryTokenRestrictionMiddleware:
+    """
+    Middleware to restrict temporary 2FA tokens to specific endpoints.
+
+    Temporary 2FA tokens should ONLY be valid for:
+    - /auth/2fa/verify/ - To complete 2FA verification during login
+    - /auth/2fa/resend/ - To resend 2FA code during login
+
+    Using a temporary token on any other endpoint will result in 403 Forbidden.
+
+    **How It Works:**
+    1. Runs on EVERY request after authentication
+    2. Checks if request has an Authorization header with a JWT token
+    3. Decodes the token to check for 'temp_2fa' claim
+    4. If temp_2fa claim exists, validates that path is allowed
+    5. Blocks temporary tokens from accessing non-2FA endpoints
+
+    **Where It's Registered:**
+    config/settings/base.py -> MIDDLEWARE list (after authentication middleware)
+    """
+
+    # Paths that temporary 2FA tokens are allowed to access
+    ALLOWED_PATHS = [
+        '/auth/2fa/verify/',    # Complete 2FA verification
+        '/auth/2fa/resend/',    # Resend 2FA code
+    ]
+
+    def __init__(self, get_response):
+        """Initialize middleware."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """
+        Process request and block temporary tokens from unauthorized endpoints.
+
+        Args:
+            request: HttpRequest object
+
+        Returns:
+            HttpResponse: Either the normal response or a 403 JSON error
+        """
+
+        # Step 1: Check if there's an Authorization header
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth_header.startswith('Bearer '):
+            # No JWT token in request, let it pass
+            return self.get_response(request)
+
+        # Step 2: Extract token from Authorization header
+        try:
+            token_string = auth_header.split(' ')[1]
+        except IndexError:
+            # Malformed Authorization header, let DRF handle it
+            return self.get_response(request)
+
+        # Step 3: Decode token to check for temp_2fa claim
+        try:
+            token = UntypedToken(token_string)
+            is_temp_token = token.get('temp_2fa', False)
+        except (InvalidToken, TokenError):
+            # Invalid token, let DRF authentication handle it
+            return self.get_response(request)
+
+        # Step 4: If not a temporary token, allow request
+        if not is_temp_token:
+            return self.get_response(request)
+
+        # Step 5: This IS a temporary token - check if path is allowed
+        if self._is_path_allowed(request.path):
+            # Allowed path for temporary tokens
+            return self.get_response(request)
+
+        # Step 6: Temporary token used on unauthorized endpoint - BLOCK REQUEST
+        logger.warning(
+            f"Temporary 2FA token blocked from accessing {request.path}. "
+            f"Temp tokens are only valid for {', '.join(self.ALLOWED_PATHS)}"
+        )
+
+        return JsonResponse(
+            {
+                'error': 'This temporary token can only be used for 2FA verification endpoints.',
+                'allowed_endpoints': self.ALLOWED_PATHS,
+                'detail': 'Please complete 2FA verification at /auth/2fa/verify/ to obtain full access tokens.'
+            },
+            status=403
+        )
+
+    def _is_path_allowed(self, path):
+        """
+        Check if the given path is allowed for temporary tokens.
+
+        Args:
+            path: Request path to check
+
+        Returns:
+            bool: True if path is allowed, False otherwise
+        """
+        for allowed_path in self.ALLOWED_PATHS:
+            if path.startswith(allowed_path):
                 return True
         return False
