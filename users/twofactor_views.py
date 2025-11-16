@@ -8,7 +8,7 @@ from django.conf import settings
 from django.utils import timezone
 from rest_framework import status, serializers
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, inline_serializer
 
@@ -30,7 +30,7 @@ from users.oauth_adapters import generate_jwt_tokens
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Enable 2FA - Step 1: Request verification code',
+    summary='Enable 2FA - Step 1: Request verification code (Authenticated)',
     description="""
     Initiate two-factor authentication setup for your account.
 
@@ -163,7 +163,7 @@ def enable_2fa(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Enable 2FA - Step 2: Verify code and complete setup',
+    summary='Enable 2FA - Step 2: Verify code and complete setup (Authenticated)',
     description="""
     Complete two-factor authentication setup by verifying the code sent to your email.
 
@@ -307,7 +307,7 @@ def verify_setup_2fa(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Disable 2FA for user account',
+    summary='Disable 2FA for user account (Authenticated)',
     description="""
     Disable two-factor authentication for your account.
 
@@ -407,7 +407,7 @@ def disable_2fa(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Get 2FA status for current user',
+    summary='Get 2FA status for current user (Authenticated)',
     description="""
     Check whether two-factor authentication is enabled for your account.
 
@@ -468,7 +468,7 @@ def get_2fa_status(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Verify 2FA code during login',
+    summary='Verify 2FA code during login (Public - requires temp token)',
     description="""
     Complete the login process by verifying the 2FA code sent to your email.
 
@@ -546,6 +546,7 @@ def get_2fa_status(request):
     }
 )
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def verify_2fa_login(request):
     """
     Verify 2FA code during login and return full JWT tokens.
@@ -666,7 +667,7 @@ def verify_2fa_login(request):
 
 @extend_schema(
     tags=['Two-Factor Authentication'],
-    summary='Resend 2FA verification code during login',
+    summary='Resend 2FA verification code during login (Public - requires temp token)',
     description="""
     Request a new 2FA verification code during the login process.
 
@@ -726,6 +727,7 @@ def verify_2fa_login(request):
     }
 )
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def resend_2fa_code(request):
     """
     Resend 2FA verification code during login.

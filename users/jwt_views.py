@@ -5,6 +5,7 @@ Overrides the default JWT token creation to support 2FA flow.
 """
 
 from rest_framework import status, serializers
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, inline_serializer
@@ -25,11 +26,11 @@ class CustomTokenObtainPairView(APIView):
     If 2FA enforcement is enabled and user doesn't have 2FA, returns 403 error.
     """
 
-    permission_classes = []  # Allow anyone to access login endpoint
+    permission_classes = [AllowAny]  # Allow anyone to access login endpoint
 
     @extend_schema(
         tags=['Authentication'],
-        summary='Login and obtain JWT tokens',
+        summary='Login and obtain JWT tokens (Public)',
         description="""
         Authenticate user and obtain JWT access and refresh tokens.
 
@@ -244,9 +245,11 @@ class CustomTokenRefreshView(TokenRefreshView):
     Wraps SimpleJWT's TokenRefreshView to add detailed Swagger documentation.
     """
 
+    permission_classes = [AllowAny]  # Allow anyone to access login endpoint
+
     @extend_schema(
         tags=['Authentication'],
-        summary='Refresh JWT access token',
+        summary='Refresh JWT access token (Public)',
         description="""
         Obtain a new access token using your refresh token.
 
@@ -328,9 +331,11 @@ class CustomTokenVerifyView(TokenVerifyView):
     Wraps SimpleJWT's TokenVerifyView to add detailed Swagger documentation.
     """
 
+    permission_classes = [AllowAny]  # Allow anyone to access login endpoint
+
     @extend_schema(
         tags=['Authentication'],
-        summary='Verify JWT token validity',
+        summary='Verify JWT token validity (Public)',
         description="""
         Check if a JWT token (access or refresh) is valid.
 

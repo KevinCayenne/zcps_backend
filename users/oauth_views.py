@@ -121,8 +121,8 @@ class GoogleCallback(View):
             # Get TwoFactorSettings to check enforcement policy
             settings_obj = TwoFactorSettings.get_solo()
 
-            # Check if 2FA enforcement is enabled AND user has 2FA enabled
-            if settings_obj.enforce_2fa_for_all_users and user.is_2fa_enabled:
+            # Check if 2FA is required (either globally enforced OR user has opted in)
+            if settings_obj.enforce_2fa_for_all_users or user.is_2fa_enabled:
                 # Generate and send 2FA code
                 twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
                 send_2fa_code_email(user, twofactor_code.code, verification_type='TWO_FACTOR')

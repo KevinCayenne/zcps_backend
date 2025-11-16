@@ -32,7 +32,7 @@ class LogoutView(APIView):
 
     @extend_schema(
         tags=['Authentication'],
-        summary='Logout and blacklist refresh token',
+        summary='Logout and blacklist refresh token (Authenticated)',
         description="""
         Logout the current user by blacklisting their refresh token.
 
@@ -118,7 +118,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Register new user account',
+        summary='Register new user account (Public)',
         description="""
         Create a new user account with email and password.
 
@@ -188,9 +188,13 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='List all users (Admin only)',
+        summary='List all users (Authenticated - CurrentUserOrAdmin)',
         description="""
-        Retrieve a list of all user accounts in the system.
+        Retrieve a list of user accounts.
+
+        **Permission:** `CurrentUserOrAdmin`
+        - Regular users: Can only see their own user object (returns array with 1 item)
+        - Admin users: Can see all users in the system
 
         **What You Get:**
         - Array of user objects
@@ -198,18 +202,16 @@ class CustomUserViewSet(UserViewSet):
         - Paginated results (if pagination is enabled)
 
         **Prerequisites:**
-        - **Admin privileges required** (is_staff=True)
-        - Must be authenticated with admin account
+        - Must be authenticated
 
         **Common Use Cases:**
         - Admin user management interface
-        - User directory/search
-        - Analytics and reporting
+        - User directory/search (admin only)
+        - Analytics and reporting (admin only)
 
         **Security:**
-        - This endpoint is ADMIN-ONLY
-        - Regular users will receive 403 Forbidden
-        - Use `/auth/users/me/` for current user profile instead
+        - Regular users will only see themselves in the list
+        - Use `/auth/users/me/` for simpler current user access
         """,
         examples=[
             OpenApiExample(
@@ -242,9 +244,13 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Get user by ID (Admin only)',
+        summary='Get user by ID (Authenticated - CurrentUserOrAdmin)',
         description="""
         Retrieve a specific user's profile information by their user ID.
+
+        **Permission:** `CurrentUserOrAdmin`
+        - Regular users: Can only retrieve their own profile (if ID matches)
+        - Admin users: Can retrieve any user's profile
 
         **What You Get:**
         - User ID
@@ -298,7 +304,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Update user by ID (Admin only - full update)',
+        summary='Update user by ID (Authenticated - CurrentUserOrAdmin - full update)',
         description="""
         Fully update a user's profile information by their user ID (PUT method).
 
@@ -359,7 +365,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Partially update user by ID (Admin only)',
+        summary='Partially update user by ID (Authenticated - CurrentUserOrAdmin)',
         description="""
         Partially update a user's profile information by their user ID (PATCH method).
 
@@ -420,7 +426,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Delete user by ID (Admin only)',
+        summary='Delete user by ID (Authenticated - CurrentUserOrAdmin)',
         description="""
         Delete a user account by their user ID.
 
@@ -472,7 +478,7 @@ class CustomUserViewSet(UserViewSet):
     @extend_schema(
         methods=['GET'],
         tags=['User Management'],
-        summary='Get current user profile',
+        summary='Get current user profile (Authenticated)',
         description="""
         Retrieve the authenticated user's profile information.
 
@@ -513,7 +519,7 @@ class CustomUserViewSet(UserViewSet):
     @extend_schema(
         methods=['PUT'],
         tags=['User Management'],
-        summary='Update current user profile (full update)',
+        summary='Update current user profile (Authenticated - full update)',
         description="""
         Fully update the authenticated user's profile information (PUT method).
 
@@ -566,7 +572,7 @@ class CustomUserViewSet(UserViewSet):
     @extend_schema(
         methods=['PATCH'],
         tags=['User Management'],
-        summary='Partially update current user profile',
+        summary='Partially update current user profile (Authenticated)',
         description="""
         Partially update the authenticated user's profile information (PATCH method).
 
@@ -615,7 +621,7 @@ class CustomUserViewSet(UserViewSet):
     @extend_schema(
         methods=['DELETE'],
         tags=['User Management'],
-        summary='Delete current user account',
+        summary='Delete current user account (Authenticated)',
         description="""
         Delete the authenticated user's own account.
 
@@ -662,7 +668,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Activate user account',
+        summary='Activate user account (Public)',
         description="""
         Activate a user account using the UID and token from activation email.
 
@@ -723,7 +729,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Resend activation email',
+        summary='Resend activation email (Public)',
         description="""
         Resend the account activation email to the user.
 
@@ -779,7 +785,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Request password reset',
+        summary='Request password reset (Public)',
         description="""
         Request a password reset email for forgotten password.
 
@@ -829,7 +835,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Confirm password reset with new password',
+        summary='Confirm password reset with new password (Public)',
         description="""
         Complete the password reset process with uid, token, and new password.
 
@@ -918,7 +924,7 @@ class CustomUserViewSet(UserViewSet):
 
     @extend_schema(
         tags=['User Management'],
-        summary='Change password (authenticated user)',
+        summary='Change password (Authenticated)',
         description="""
         Change the password for the currently authenticated user.
 

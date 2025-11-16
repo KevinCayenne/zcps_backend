@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'django.contrib.sites',  # Required by allauth
 
     # Third-party apps
+    'corsheaders',  # CORS headers support
     'drf_spectacular',
     'rest_framework',
     'djoser',
@@ -57,6 +58,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS middleware (must be before CommonMiddleware)
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -227,20 +229,6 @@ DJOSER = {
         'confirmation': 'users.email.ConfirmationEmail',
         'password_reset': 'users.email.PasswordResetEmail',
         'password_changed_confirmation': 'users.email.PasswordChangedConfirmationEmail',
-    },
-    'PERMISSIONS': {
-        'user': ['rest_framework.permissions.IsAdminUser'],  # GET /auth/users/ - Admin only
-        'user_list': ['rest_framework.permissions.IsAdminUser'],  # GET /auth/users/ - Admin only
-        'user_create': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/ - Public registration
-        'user_delete': ['rest_framework.permissions.IsAdminUser'],  # DELETE /auth/users/{id}/ - Admin only
-        'set_password': ['rest_framework.permissions.IsAuthenticated'],  # POST /auth/users/set_password/ - Current user
-        'username_reset': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_username/ - Public
-        'username_reset_confirm': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_username_confirm/ - Public
-        'set_username': ['rest_framework.permissions.IsAuthenticated'],  # POST /auth/users/set_username/ - Current user
-        'activation': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/activation/ - Public
-        'resend_activation': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/resend_activation/ - Public
-        'reset_password': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_password/ - Public
-        'reset_password_confirm': ['rest_framework.permissions.AllowAny'],  # POST /auth/users/reset_password_confirm/ - Public
     },
 }
 

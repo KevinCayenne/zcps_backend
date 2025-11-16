@@ -21,3 +21,7 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 
 # Allow all hosts in development
 ALLOWED_HOSTS = ['*']
+
+# CORS settings for development
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins in development
+CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent with cross-origin requests
