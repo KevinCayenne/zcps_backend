@@ -11,6 +11,7 @@ This document provides comprehensive testing workflows for all authentication en
 5. [Enable Two-Factor Authentication](#5-enable-two-factor-authentication)
 6. [Disable Two-Factor Authentication](#6-disable-two-factor-authentication)
 7. [Password Reset Flow](#7-password-reset-flow)
+8. [User Profile Management](#8-user-profile-management)
 9. [Token Refresh & Verification](#9-token-refresh--verification)
 10. [Logout & Token Blacklisting](#10-logout--token-blacklisting)
 11. [2FA Enforcement Scenarios](#11-2fa-enforcement-scenarios)
@@ -568,6 +569,49 @@ Body: Click the link to reset your password: http://localhost:3000/reset-passwor
 - ✅ **All refresh tokens blacklisted** (forced logout)
 - ✅ User must log in again with new password
 - ✅ Token becomes invalid after use
+
+---
+
+## 8. User Profile Management
+
+### Scenario 8.1: Get Current User Profile
+
+**Endpoint:** `GET /auth/users/me/`
+
+**Authentication:** Required (use access token)
+
+**Expected Response:** `200 OK`
+```json
+{
+  "id": 1,
+  "username": "johndoe",
+  "email": "john@example.com",
+  "first_name": "John",
+  "last_name": "Doe",
+  "phone_number": "+1 555 123 4567",
+  "is_2fa_enabled": true,
+  "twofa_setup_date": "2025-11-15T12:15:00Z",
+  "created_at": "2025-11-15T12:00:00Z"
+}
+```
+
+---
+
+### Scenario 8.2: Update User Profile
+
+**Endpoint:** `PATCH /auth/users/me/`
+
+**Authentication:** Required (use access token)
+
+**Request Body:**
+```json
+{
+  "first_name": "Johnny",
+  "phone_number": "+1 555 999 8888"
+}
+```
+
+**Expected Response:** `200 OK` (returns updated user object)
 
 ---
 

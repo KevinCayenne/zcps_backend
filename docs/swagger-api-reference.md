@@ -205,6 +205,34 @@ Try `GET /auth/users/me/` to verify authentication works:
 
 ---
 
+### 3a. Login (With 2FA Enforcement - User Needs Setup)
+
+**Endpoint:** `POST /auth/jwt/create/`
+
+**Scenario:** When 2FA enforcement is enabled in Django admin (`/admin/users/twofactorsettings/`) but user hasn't enabled 2FA yet.
+
+**Request Body:** (same as above)
+
+**Expected Response:** `200 OK`
+```json
+{
+  "setup_token": "eyJ0eXAiOiJKV1Qi...",
+  "requires_2fa_setup": true,
+  "message": "Two-factor authentication is required. Use this token to set up 2FA at /auth/2fa/enable/",
+  "allowed_endpoints": ["/auth/2fa/enable/", "/auth/2fa/enable/verify/", "/auth/2fa/status/"]
+}
+```
+
+**Next Steps:**
+1. Copy the `setup_token`
+2. Authorize in Swagger with setup token
+3. Use `POST /auth/2fa/enable/` to start 2FA setup
+4. Check email for 6-digit setup code
+5. Use `POST /auth/2fa/enable/verify/` to complete setup
+6. Login again - now follows normal 2FA flow (section 3)
+
+---
+
 ### 4. Enable Two-Factor Authentication
 
 **Endpoint:** `POST /auth/2fa/enable/`
@@ -313,12 +341,19 @@ Try `GET /auth/users/me/` to verify authentication works:
 
 **Prerequisites:** Must be authenticated
 
-**Request Body:**
+**Request Body (for regular users with password):**
 ```json
 {
   "password": "SecurePass123!"
 }
 ```
+
+**Request Body (for OAuth users without password):**
+```json
+{}
+```
+
+**Note:** OAuth users (those who signed up with Google) don't have passwords and can disable 2FA without password confirmation.
 
 **Expected Response:** `200 OK`
 ```json
@@ -487,7 +522,25 @@ Try `GET /auth/users/me/` to verify authentication works:
 
 ---
 
-### Workflow 4: OAuth Login (Browser Required)
+### Workflow 4: 2FA Enforcement (Mandatory Enrollment)
+
+**Prerequisites:** Admin has enabled 2FA enforcement in Django admin (`/admin/users/twofactorsettings/`)
+
+1. **Login:** `POST /auth/jwt/create/` → Get setup_token
+2. **Authorize** in Swagger with setup token
+3. **Enable 2FA:** `POST /auth/2fa/enable/`
+4. Check email for code
+5. **Verify Setup:** `POST /auth/2fa/enable/verify/` with code
+6. **Logout:** Click "Logout" in Swagger authorization
+7. **Login Again:** `POST /auth/jwt/create/` → Now get temp_token (follows normal 2FA flow)
+8. **Authorize** with temp token
+9. Check email for new code
+10. **Verify 2FA:** `POST /auth/2fa/verify/` → Get full tokens
+11. **Re-authorize** with new access token
+
+---
+
+### Workflow 5: OAuth Login (Browser Required)
 
 1. Open `http://localhost:8000/auth/google/` in browser
 2. Authorize with Google
@@ -561,12 +614,13 @@ http://localhost:8000/admin/
 
 ### "Unauthorized" Errors
 
-**Problem:** Getting 401 responses on authenticated endpoints
+**Problem:** Getting 401 or 403 responses on authenticated endpoints
 
 **Solution:**
 1. Check if token is expired (decode at jwt.io)
 2. Re-authorize with fresh access token
-3. If using temp token, only `/auth/2fa/verify/` and `/auth/2fa/resend/` work
+3. If using temp token (for 2FA login), only `/auth/2fa/verify/` and `/auth/2fa/resend/` work
+4. If using setup token (for mandatory 2FA enrollment), only `/auth/2fa/enable/`, `/auth/2fa/enable/verify/`, and `/auth/2fa/status/` work
 
 ---
 
@@ -626,7 +680,8 @@ http://localhost:8000/admin/
 |------|----------|----------|-----------|
 | Access | Regular API calls | 15 min | Most endpoints |
 | Refresh | Get new access token | 7 days | `/auth/jwt/refresh/` |
-| Temporary | 2FA verification only | 10 min | `/auth/2fa/verify/`, `/auth/2fa/resend/` |
+| Temporary | 2FA verification during login | 10 min | `/auth/2fa/verify/`, `/auth/2fa/resend/` |
+| Setup | Mandatory 2FA enrollment | 10 min | `/auth/2fa/enable/`, `/auth/2fa/enable/verify/`, `/auth/2fa/status/` |
 
 ### Code Types
 

@@ -12,6 +12,10 @@ A production-ready Django REST Framework boilerplate with comprehensive authenti
 - Google OAuth 2.0 authentication (Sign in with Google)
 - Dual authentication support (password + OAuth)
 - Automatic account linking by email for OAuth users
+- **Two-Factor Authentication (2FA)** with email verification codes
+- Optional 2FA enforcement for all users (configurable via Django admin)
+- Temporary token system for 2FA verification flow
+- Setup tokens for mandatory 2FA enrollment
 
 ### Password Management
 - Password reset via email with secure tokens
@@ -24,6 +28,7 @@ A production-ready Django REST Framework boilerplate with comprehensive authenti
 - Resend activation email functionality
 - Password reset confirmation emails
 - Password change notification emails
+- 2FA verification code delivery via email
 
 ### User Management
 - Custom User model with email as primary identifier
@@ -31,6 +36,8 @@ A production-ready Django REST Framework boilerplate with comprehensive authenti
 - Phone number field with international format support
 - OAuth profile data storage (Google ID, profile picture)
 - User listing with proper permissions
+- 2FA settings per user (opt-in/opt-out, preferred delivery method)
+- Database-configurable 2FA policies via Django admin
 
 ### API Documentation
 - Interactive Swagger UI documentation
@@ -46,6 +53,9 @@ A production-ready Django REST Framework boilerplate with comprehensive authenti
 - Token expiration and refresh
 - OAuth state validation
 - Configurable security settings
+- Two-factor authentication with cryptographically secure codes
+- Temporary token restrictions via middleware
+- 2FA enforcement policies for enhanced security
 
 ## Quick Start
 
@@ -118,6 +128,14 @@ The API will be available at `http://localhost:8000/`
 - `POST /auth/users/reset_password/` - Request password reset
 - `POST /auth/users/reset_password_confirm/` - Confirm password reset
 - `POST /auth/users/set_password/` - Change password (authenticated)
+
+#### Two-Factor Authentication
+- `POST /auth/2fa/enable/` - Enable 2FA and request verification code
+- `POST /auth/2fa/enable/verify/` - Verify code and complete 2FA setup
+- `POST /auth/2fa/disable/` - Disable 2FA for account
+- `GET /auth/2fa/status/` - Check 2FA status for current user
+- `POST /auth/2fa/verify/` - Verify 2FA code during login
+- `POST /auth/2fa/resend/` - Resend 2FA verification code
 
 ### User Endpoints
 
@@ -199,6 +217,10 @@ SEND_ACTIVATION_EMAIL=True
 PASSWORD_RESET_TIMEOUT=86400
 BLACKLIST_TOKENS_ON_PASSWORD_CHANGE=False
 
+# Two-Factor Authentication
+# All 2FA settings are managed via Django admin at /admin/users/twofactorsettings/
+# No environment variables needed - configure in database
+
 # Google OAuth
 GOOGLE_OAUTH_CLIENT_ID=your-google-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-client-secret
@@ -207,6 +229,18 @@ GOOGLE_OAUTH_ERROR_REDIRECT_URL=http://localhost:3000/auth/error
 ```
 
 See `.env.example` for all available options.
+
+### Two-Factor Authentication Configuration
+
+2FA settings are managed via Django admin (not environment variables):
+
+1. Access Django admin: `http://localhost:8000/admin/users/twofactorsettings/`
+2. Configure settings:
+   - `enforce_2fa_for_all_users` - Require all users to enable 2FA (default: False)
+   - `default_2fa_method` - Default delivery method for codes (default: EMAIL)
+   - `code_expiration_seconds` - How long codes are valid (default: 600 = 10 min)
+   - `max_failed_attempts` - Maximum failed verification attempts (default: 5)
+   - `temporary_token_lifetime_minutes` - Lifetime of temporary tokens (default: 10 min)
 
 ## Testing
 
@@ -239,13 +273,18 @@ django_boilerplate/
 │   ├── urls.py           # Main URL configuration
 │   └── wsgi.py
 ├── users/                 # Users app
-│   ├── models.py         # Custom User model
+│   ├── models.py         # Custom User model with 2FA fields
 │   ├── serializers.py    # DRF serializers
-│   ├── views.py          # API views
+│   ├── views.py          # User management API views
+│   ├── jwt_views.py      # JWT authentication views with 2FA
+│   ├── twofactor_views.py # 2FA setup and verification views
+│   ├── twofactor_utils.py # 2FA utility functions
 │   ├── backends.py       # Custom auth backends
-│   ├── oauth_adapters.py # OAuth adapters
+│   ├── oauth_adapters.py # OAuth adapters and token generators
 │   ├── oauth_views.py    # OAuth views
+│   ├── middleware.py     # 2FA enforcement and token restriction
 │   ├── utils.py          # Utility functions
+│   ├── admin.py          # Django admin configuration
 │   ├── tests/            # Test suite
 │   └── migrations/
 ├── docs/                  # Documentation
@@ -265,7 +304,9 @@ django_boilerplate/
 - **djangorestframework-simplejwt** 5.3.1 - JWT authentication
 - **django-allauth** 0.57.0 - OAuth provider integration
 - **dj-rest-auth** 5.0.2 - Social authentication with DRF
-- **drf-spectacular** - API documentation
+- **django-solo** 2.3.0 - Singleton model for 2FA settings
+- **django-cors-headers** 4.9.0 - CORS support for frontend integration
+- **drf-spectacular** 0.27.2 - API documentation
 - **pytest** & **pytest-django** - Testing framework
 
 ## Security Features
@@ -278,6 +319,10 @@ django_boilerplate/
 - OAuth state validation
 - Minimal OAuth scopes (openid, email, profile)
 - Unusable passwords for OAuth-only users
+- Two-factor authentication with cryptographically secure 6-digit codes
+- Temporary token restrictions enforced via middleware
+- 2FA enforcement policies configurable per deployment
+- Separate setup tokens for mandatory 2FA enrollment
 
 ## Production Deployment
 

@@ -67,11 +67,38 @@ export class LoginComponent {
 
 ## Step 2: Handle Successful Callback
 
-After successful authentication, the backend redirects to your frontend callback URL with JWT tokens as query parameters:
+After successful authentication, the backend redirects to your frontend callback URL. The response depends on whether 2FA is enabled:
+
+### Without 2FA (Standard Flow)
 
 ```
 http://localhost:3000/auth/callback?access=<access_token>&refresh=<refresh_token>
 ```
+
+### With 2FA Enabled
+
+```
+http://localhost:3000/auth/callback?temp_token=<temporary_token>&requires_2fa=true
+```
+
+In this case, you'll need to:
+1. Store the temporary token
+2. Prompt the user for the 6-digit code from their email
+3. Call `/auth/2fa/verify/` with the code and temp token
+4. Receive full JWT tokens
+
+### With 2FA Enforcement (User Needs Setup)
+
+```
+http://localhost:3000/auth/callback?setup_token=<setup_token>&requires_2fa_setup=true
+```
+
+In this case, you'll need to:
+1. Store the setup token
+2. Call `/auth/2fa/enable/` to start 2FA setup
+3. Prompt the user for the setup code from their email
+4. Call `/auth/2fa/enable/verify/` to complete setup
+5. Login again - now follows the standard 2FA flow
 
 ### React Example
 
@@ -86,7 +113,12 @@ const OAuthCallback = () => {
   useEffect(() => {
     const accessToken = searchParams.get('access');
     const refreshToken = searchParams.get('refresh');
+    const tempToken = searchParams.get('temp_token');
+    const setupToken = searchParams.get('setup_token');
+    const requires2FA = searchParams.get('requires_2fa') === 'true';
+    const requires2FASetup = searchParams.get('requires_2fa_setup') === 'true';
 
+    // Scenario 1: Standard OAuth flow (no 2FA)
     if (accessToken && refreshToken) {
       // Store tokens in localStorage or state management
       localStorage.setItem('access_token', accessToken);
@@ -97,7 +129,24 @@ const OAuthCallback = () => {
 
       // Redirect to dashboard or home
       navigate('/dashboard');
-    } else {
+    }
+    // Scenario 2: 2FA enabled - need to verify code
+    else if (tempToken && requires2FA) {
+      // Store temporary token
+      localStorage.setItem('temp_token', tempToken);
+
+      // Redirect to 2FA verification page
+      navigate('/auth/2fa-verify');
+    }
+    // Scenario 3: 2FA enforcement - need to setup 2FA first
+    else if (setupToken && requires2FASetup) {
+      // Store setup token
+      localStorage.setItem('setup_token', setupToken);
+
+      // Redirect to 2FA setup page
+      navigate('/auth/2fa-setup');
+    }
+    else {
       // Handle missing tokens
       console.error('No tokens received from OAuth callback');
       navigate('/login');
