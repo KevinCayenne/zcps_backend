@@ -139,6 +139,12 @@
             background: #218838;
         }
 
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .google-btn {
             background: white;
             color: #444;
@@ -211,11 +217,37 @@
             font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
             font-size: 12px;
         }
+
+        .step-indicator {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .code-input-group {
+            margin: 20px 0;
+        }
+
+        .code-input-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .code-input {
+            padding: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            width: 150px;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔐 Google OAuth Test Page</h1>
+        <h1>Google OAuth Test Page</h1>
         <p class="subtitle">Django Auth Boilerplate - OAuth Testing Tool</p>
 
         <!-- Welcome State -->
@@ -251,7 +283,7 @@
         <!-- Success State (with tokens) -->
         <div id="successState" class="hidden">
             <div class="status success">
-                <strong>✓ Authentication Successful!</strong><br>
+                <strong>Authentication Successful!</strong><br>
                 You've successfully authenticated via Google OAuth.
             </div>
 
@@ -275,10 +307,10 @@
             <button class="button secondary" onclick="reset()">Test Again</button>
         </div>
 
-        <!-- 2FA Required State -->
+        <!-- 2FA Verification Required State (Scenario 2) -->
         <div id="twoFactorState" class="hidden">
             <div class="status warning">
-                <strong>⚠ Two-Factor Authentication Required</strong><br>
+                <strong>Two-Factor Authentication Required</strong><br>
                 A verification code has been sent to your email.
             </div>
 
@@ -296,10 +328,9 @@
                 </ol>
             </div>
 
-            <div style="margin: 20px 0;">
-                <label style="display: block; margin-bottom: 10px; font-weight: 600;">Enter 2FA Code:</label>
-                <input type="text" id="twoFactorCode" placeholder="000000" maxlength="6"
-                       style="padding: 12px; border: 1px solid #ced4da; border-radius: 6px; width: 150px; font-size: 18px; text-align: center; letter-spacing: 5px;">
+            <div class="code-input-group">
+                <label>Enter 2FA Code:</label>
+                <input type="text" id="twoFactorCode" placeholder="000000" maxlength="6" class="code-input">
                 <button class="button success" onclick="verify2FA()" style="margin-left: 10px;">Verify Code</button>
             </div>
 
@@ -307,10 +338,53 @@
             <button class="button secondary" onclick="reset()">Start Over</button>
         </div>
 
+        <!-- 2FA Setup Required State (Scenario 3) -->
+        <div id="twoFactorSetupState" class="hidden">
+            <div class="status warning">
+                <strong>2FA Setup Required</strong><br>
+                System requires two-factor authentication. Please complete setup to continue.
+            </div>
+
+            <div class="token-box">
+                <label>Setup Token</label>
+                <div class="token" id="setupToken"></div>
+            </div>
+
+            <div class="instructions">
+                <strong>Setup Process:</strong>
+                <ol>
+                    <li>Click "Request Setup Code" to receive a verification code via email</li>
+                    <li>Enter the 6-digit code to complete 2FA setup</li>
+                    <li>After setup, you'll receive full JWT tokens</li>
+                </ol>
+            </div>
+
+            <!-- Step 1: Request Code -->
+            <div id="setupStep1">
+                <div class="step-indicator">Step 1: Request Setup Code</div>
+                <button class="button" onclick="requestSetupCode()" id="requestCodeBtn">Request Setup Code</button>
+            </div>
+
+            <!-- Step 2: Enter Code (hidden until Step 1 complete) -->
+            <div id="setupStep2" class="hidden">
+                <div class="step-indicator">Step 2: Enter Verification Code</div>
+                <div class="code-input-group">
+                    <label>Enter Setup Code:</label>
+                    <input type="text" id="setupCode" placeholder="000000" maxlength="6" class="code-input">
+                    <button class="button success" onclick="completeSetup()" style="margin-left: 10px;">Complete Setup</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button class="button" onclick="copyToken('setupToken')">Copy Setup Token</button>
+                <button class="button secondary" onclick="reset()">Start Over</button>
+            </div>
+        </div>
+
         <!-- Error State -->
         <div id="errorState" class="hidden">
             <div class="status error">
-                <strong>✗ Authentication Failed</strong><br>
+                <strong>Authentication Failed</strong><br>
                 <span id="errorMessage"></span>
             </div>
 
@@ -336,6 +410,9 @@
         const BACKEND_URL = 'http://localhost:8000';
         const OAUTH_ENDPOINT = `${BACKEND_URL}/auth/google/`;
 
+        // Store tokens for use in API calls
+        let currentSetupToken = '';
+
         // Parse URL parameters
         function getUrlParams() {
             const params = new URLSearchParams(window.location.search);
@@ -359,14 +436,31 @@
 
             navigator.clipboard.writeText(token).then(() => {
                 const originalText = event.target.textContent;
-                event.target.textContent = '✓ Copied!';
+                event.target.textContent = 'Copied!';
                 setTimeout(() => {
                     event.target.textContent = originalText;
                 }, 2000);
             });
         }
 
-        // Verify 2FA code
+        // Show error in error state
+        function showError(message) {
+            hideAllStates();
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        // Hide all states
+        function hideAllStates() {
+            document.getElementById('welcomeState').classList.add('hidden');
+            document.getElementById('successState').classList.add('hidden');
+            document.getElementById('twoFactorState').classList.add('hidden');
+            document.getElementById('twoFactorSetupState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+            document.getElementById('loadingState').classList.add('hidden');
+        }
+
+        // Verify 2FA code (Scenario 2)
         function verify2FA() {
             const code = document.getElementById('twoFactorCode').value;
             const tempToken = document.getElementById('tempToken').textContent;
@@ -387,7 +481,7 @@
             .then(response => {
                 if (!response.ok) {
                     return response.json().then(data => {
-                        throw new Error(JSON.stringify(data, null, 2));
+                        throw new Error(data.error || JSON.stringify(data));
                     });
                 }
                 return response.json();
@@ -395,18 +489,123 @@
             .then(data => {
                 if (data.access && data.refresh) {
                     // Switch to success state
-                    document.getElementById('twoFactorState').classList.add('hidden');
+                    hideAllStates();
                     document.getElementById('successState').classList.remove('hidden');
                     document.getElementById('accessToken').textContent = data.access;
                     document.getElementById('refreshToken').textContent = data.refresh;
-                    alert('✓ 2FA Verification Successful!\n\nYou now have full access tokens.');
                 } else {
-                    alert('Unexpected response: ' + JSON.stringify(data, null, 2));
+                    showError('Unexpected response: ' + JSON.stringify(data));
                 }
             })
             .catch(error => {
-                alert('2FA Verification Failed:\n' + error.message);
+                showError('2FA Verification Failed: ' + error.message);
             });
+        }
+
+        // Request setup code (Scenario 3 - Step 1)
+        function requestSetupCode() {
+            const setupToken = document.getElementById('setupToken').textContent;
+            const requestBtn = document.getElementById('requestCodeBtn');
+
+            requestBtn.disabled = true;
+            requestBtn.textContent = 'Sending...';
+
+            fetch(`${BACKEND_URL}/auth/2fa/enable/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${setupToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ method: 'email' })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || JSON.stringify(data));
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Show Step 2
+                document.getElementById('setupStep1').classList.add('hidden');
+                document.getElementById('setupStep2').classList.remove('hidden');
+
+                // Update instructions
+                const statusDiv = document.querySelector('#twoFactorSetupState .status');
+                statusDiv.innerHTML = '<strong>Code Sent!</strong><br>Check your email for the verification code.';
+            })
+            .catch(error => {
+                requestBtn.disabled = false;
+                requestBtn.textContent = 'Request Setup Code';
+                showError('Failed to request setup code: ' + error.message);
+            });
+        }
+
+        // Complete setup (Scenario 3 - Step 2)
+        function completeSetup() {
+            const code = document.getElementById('setupCode').value;
+            const setupToken = document.getElementById('setupToken').textContent;
+
+            if (!code || code.length !== 6) {
+                alert('Please enter a 6-digit verification code');
+                return;
+            }
+
+            fetch(`${BACKEND_URL}/auth/2fa/enable/verify/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${setupToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code: code })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || JSON.stringify(data));
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // 2FA is now enabled, now we need to get tokens
+                // After setup complete, we need to do a full login again
+                // For now, show success message and ask user to login again
+                // Or we can generate tokens directly if the setup returns them
+
+                if (data.access && data.refresh) {
+                    // If setup returns tokens directly
+                    hideAllStates();
+                    document.getElementById('successState').classList.remove('hidden');
+                    document.getElementById('accessToken').textContent = data.access;
+                    document.getElementById('refreshToken').textContent = data.refresh;
+                } else {
+                    // Setup complete but need to get tokens
+                    // Generate tokens using the setup token
+                    return generateTokensAfterSetup(setupToken);
+                }
+            })
+            .catch(error => {
+                showError('Setup verification failed: ' + error.message);
+            });
+        }
+
+        // Generate tokens after 2FA setup is complete
+        function generateTokensAfterSetup(setupToken) {
+            // After 2FA is enabled, we need tokens
+            // The user is now authenticated with 2FA enabled
+            // We should redirect them to login again or auto-generate tokens
+
+            // For now, show success message indicating setup is complete
+            hideAllStates();
+            document.getElementById('successState').classList.remove('hidden');
+
+            const statusDiv = document.querySelector('#successState .status');
+            statusDiv.innerHTML = '<strong>2FA Setup Complete!</strong><br>Two-factor authentication has been enabled. Please sign in again to get your tokens.';
+
+            document.getElementById('accessToken').textContent = 'Setup complete - Please sign in again';
+            document.getElementById('refreshToken').textContent = 'Setup complete - Please sign in again';
         }
 
         // Reset to initial state
@@ -415,43 +614,51 @@
             window.history.replaceState({}, document.title, window.location.pathname);
 
             // Hide all states
+            hideAllStates();
             document.getElementById('welcomeState').classList.remove('hidden');
-            document.getElementById('successState').classList.add('hidden');
-            document.getElementById('twoFactorState').classList.add('hidden');
-            document.getElementById('errorState').classList.add('hidden');
-            document.getElementById('loadingState').classList.add('hidden');
+
+            // Reset setup state
+            document.getElementById('setupStep1').classList.remove('hidden');
+            document.getElementById('setupStep2').classList.add('hidden');
+            const requestBtn = document.getElementById('requestCodeBtn');
+            requestBtn.disabled = false;
+            requestBtn.textContent = 'Request Setup Code';
+
+            // Clear inputs
+            document.getElementById('twoFactorCode').value = '';
+            document.getElementById('setupCode').value = '';
         }
 
         // Handle OAuth callback on page load
         window.addEventListener('DOMContentLoaded', () => {
             const params = getUrlParams();
 
-            // Check for success with full tokens
-            if (params.access && params.refresh) {
-                document.getElementById('welcomeState').classList.add('hidden');
+            // Check for 2FA setup required (Scenario 3) - check first as it's most specific
+            if (params.temp_token && params.requires_2fa_setup === 'true') {
+                hideAllStates();
+                document.getElementById('twoFactorSetupState').classList.remove('hidden');
+                document.getElementById('setupToken').textContent = params.temp_token;
+                currentSetupToken = params.temp_token;
+            }
+            // Check for 2FA verification required (Scenario 2)
+            else if (params.temp_token && params.requires_2fa === 'true') {
+                hideAllStates();
+                document.getElementById('twoFactorState').classList.remove('hidden');
+                document.getElementById('tempToken').textContent = params.temp_token;
+            }
+            // Check for success with full tokens (Scenario 1)
+            else if (params.access && params.refresh) {
+                hideAllStates();
                 document.getElementById('successState').classList.remove('hidden');
                 document.getElementById('accessToken').textContent = params.access;
                 document.getElementById('refreshToken').textContent = params.refresh;
             }
-            // Check for 2FA required
-            else if (params.temp_token && params.requires_2fa === 'true') {
-                document.getElementById('welcomeState').classList.add('hidden');
-                document.getElementById('twoFactorState').classList.remove('hidden');
-                document.getElementById('tempToken').textContent = params.temp_token;
-            }
             // Check for error
-            else if (params.error) {
-                document.getElementById('welcomeState').classList.add('hidden');
+            else if (params.error_type || params.error_message) {
+                hideAllStates();
                 document.getElementById('errorState').classList.remove('hidden');
 
-                const errorMessages = {
-                    'access_denied': 'You denied access to your Google account.',
-                    'oauth_error': 'An OAuth error occurred.',
-                    'server_error': 'A server error occurred during authentication.',
-                    'invalid_request': 'Invalid OAuth request.'
-                };
-
-                const errorMessage = params.error_description || errorMessages[params.error] || 'An unknown error occurred.';
+                const errorMessage = params.error_message || 'An unknown error occurred.';
                 document.getElementById('errorMessage').textContent = errorMessage;
 
                 // Show error details if available
@@ -469,6 +676,21 @@
                         errorParamsEl.appendChild(dd);
                     }
                 }
+            }
+            // Legacy error format support
+            else if (params.error) {
+                hideAllStates();
+                document.getElementById('errorState').classList.remove('hidden');
+
+                const errorMessages = {
+                    'access_denied': 'You denied access to your Google account.',
+                    'oauth_error': 'An OAuth error occurred.',
+                    'server_error': 'A server error occurred during authentication.',
+                    'invalid_request': 'Invalid OAuth request.'
+                };
+
+                const errorMessage = params.error_description || errorMessages[params.error] || 'An unknown error occurred.';
+                document.getElementById('errorMessage').textContent = errorMessage;
             }
         });
     </script>

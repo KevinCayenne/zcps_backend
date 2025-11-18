@@ -64,7 +64,25 @@ pip install -r requirements.txt
 python manage.py migrate --settings=config.settings.development
 ```
 
-### 6. Verify Connection
+### 6. Create Django Superuser (Admin Account)
+
+Create an admin user to access the Django admin panel:
+
+```bash
+# Interactive method (prompts for password)
+python manage.py createsuperuser --settings=config.settings.development
+
+# Non-interactive method (set password via environment variable)
+DJANGO_SUPERUSER_PASSWORD=your_secure_password python manage.py createsuperuser \
+  --settings=config.settings.development \
+  --email admin@example.com \
+  --username admin \
+  --noinput
+```
+
+After creating the superuser, you can access the Django admin at `http://localhost:8000/admin/`.
+
+### 7. Verify Connection
 
 ```bash
 python -c "
@@ -85,9 +103,28 @@ The project uses different database configurations for each environment:
 
 | Environment | Settings File | Database | Behavior |
 |-------------|---------------|----------|----------|
-| Development | `development.py` | PostgreSQL | Uses `DATABASE_URL` from `.env`, falls back to SQLite |
+| Development | `development.py` | PostgreSQL | Requires `DATABASE_URL` from `.env` |
 | Production | `production.py` | PostgreSQL | Requires `DATABASE_URL`, no fallback |
 | Testing | `testing.py` | SQLite | In-memory database for fast tests |
+
+## Connecting with GUI Database Clients
+
+If you're using a GUI tool like DBeaver, DataGrip, or pgAdmin, use these connection details:
+
+| Setting | Value |
+|---------|-------|
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `django_auth_db` |
+| Username | `django_user` |
+| Password | `django_pass` |
+
+**JDBC URL** (for Java-based tools):
+```
+jdbc:postgresql://localhost:5432/django_auth_db
+```
+
+**Note**: The `DATABASE_URL` format (`postgres://...`) is for Django/Python. GUI tools typically need individual connection parameters or JDBC format.
 
 ## Key Dependencies
 
@@ -190,9 +227,9 @@ brew services start postgresql@16
 
 ### Development
 
-- Falls back to SQLite if `DATABASE_URL` is not set
-- Good for quick testing without PostgreSQL
-- Set `DATABASE_URL` in `.env` for PostgreSQL development
+- Requires `DATABASE_URL` to be set in `.env`
+- No SQLite fallback - PostgreSQL required for consistency with production
+- Server will fail to start if `DATABASE_URL` is not configured
 
 ### Production
 
