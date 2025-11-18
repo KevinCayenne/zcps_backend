@@ -170,7 +170,7 @@ def generate_temporary_2fa_token(user):
     Generate temporary JWT token for 2FA verification flow.
 
     Token is short-lived and includes custom claims to indicate it's a temporary 2FA token.
-    Lifetime is configured via TwoFactorSettings.temporary_token_lifetime_minutes.
+    Lifetime is configured via settings.TWOFACTOR_TEMPORARY_TOKEN_LIFETIME_MINUTES.
 
     Args:
         user: User instance
@@ -178,21 +178,14 @@ def generate_temporary_2fa_token(user):
     Returns:
         str: Temporary JWT token string
     """
-    from users.twofactor_utils import get_twofactor_settings
-
     refresh = RefreshToken.for_user(user)
 
     # Set custom claim to indicate this is a temporary 2FA token
     refresh['temp_2fa'] = True
     refresh['user_id'] = user.id
 
-    # Get temporary token lifetime from database settings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        logger.error("TwoFactorSettings not found. Please ensure migrations have been run.")
-        raise ValueError("TwoFactorSettings model not found. Run migrations first.")
-
-    temp_lifetime_minutes = settings_obj.temporary_token_lifetime_minutes
+    # Get temporary token lifetime from settings
+    temp_lifetime_minutes = settings.TWOFACTOR_TEMPORARY_TOKEN_LIFETIME_MINUTES
     refresh.access_token.set_exp(lifetime=timedelta(minutes=temp_lifetime_minutes))
 
     return str(refresh.access_token)

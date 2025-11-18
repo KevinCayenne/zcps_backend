@@ -4,6 +4,7 @@ Custom JWT token views with 2FA integration.
 Overrides the default JWT token creation to support 2FA flow.
 """
 
+from django.conf import settings
 from rest_framework import status, serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -12,8 +13,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 
 from users.oauth_adapters import generate_temporary_2fa_token
-from users.twofactor_utils import generate_2fa_code, send_2fa_code, get_twofactor_settings
-from users.models import TwoFactorSettings
+from users.twofactor_utils import generate_2fa_code, send_2fa_code
 
 
 class CustomTokenObtainPairView(APIView):
@@ -212,13 +212,8 @@ class CustomTokenObtainPairView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Get TwoFactorSettings to check enforcement policy
-        settings_obj = get_twofactor_settings()
-        if not settings_obj:
-            settings_obj = TwoFactorSettings.get_solo()
-
         # Check if 2FA is enforced and user doesn't have it enabled
-        if settings_obj.enforce_2fa_for_all_users and not user.is_2fa_enabled:
+        if settings.TWOFACTOR_ENFORCE_FOR_ALL_USERS and not user.is_2fa_enabled:
             # Generate a setup token that ONLY allows access to 2FA setup endpoints
             # This token has 'setup_2fa' claim which is checked by middleware
             temp_token = generate_temporary_2fa_token(user)
@@ -236,7 +231,7 @@ class CustomTokenObtainPairView(APIView):
         # Check if user has 2FA enabled
         if user.is_2fa_enabled:
             # Generate and send 2FA code
-            twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
+            twofactor_code = generate_2fa_code(user, verification_type='TWO_FACTOR')
             send_2fa_code(user, twofactor_code.code, verification_type='TWO_FACTOR')
 
             # Generate temporary token

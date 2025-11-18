@@ -15,7 +15,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 
-from users.models import TwoFactorCode, TwoFactorSettings
+from users.models import TwoFactorCode
 from users.serializers import (
     TwoFactorEnableSerializer,
     TwoFactorVerifySetupSerializer,
@@ -24,7 +24,7 @@ from users.serializers import (
     TwoFactorVerifyLoginSerializer,
     TwoFactorResendSerializer,
 )
-from users.twofactor_utils import generate_2fa_code, send_2fa_code, get_twofactor_settings
+from users.twofactor_utils import generate_2fa_code, send_2fa_code
 from users.oauth_adapters import generate_jwt_tokens
 
 
@@ -142,13 +142,8 @@ def enable_2fa(request):
     # Store the selected method temporarily (will be saved after verification)
     request.session['pending_2fa_method'] = method.upper()
 
-    # Get TwoFactorSettings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        settings_obj = TwoFactorSettings.get_solo()
-
     # Generate and send verification code
-    twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
+    twofactor_code = generate_2fa_code(user, verification_type='TWO_FACTOR')
     send_2fa_code(user, twofactor_code.code, preferred_2fa_method=method, verification_type='TWO_FACTOR')
 
     return Response(
@@ -241,12 +236,8 @@ def verify_setup_2fa(request):
 
     code = serializer.validated_data['code']
 
-    # Get TwoFactorSettings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        settings_obj = TwoFactorSettings.get_solo()
-
-    max_attempts = settings_obj.max_failed_attempts
+    # Get max_attempts from settings
+    max_attempts = settings.TWOFACTOR_MAX_FAILED_ATTEMPTS
 
     # Find the most recent unused code for this user
     try:
@@ -624,12 +615,8 @@ def verify_2fa_login(request):
 
     code = serializer.validated_data['code']
 
-    # Get TwoFactorSettings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        settings_obj = TwoFactorSettings.get_solo()
-
-    max_attempts = settings_obj.max_failed_attempts
+    # Get max_attempts from settings
+    max_attempts = settings.TWOFACTOR_MAX_FAILED_ATTEMPTS
 
     # Find the most recent unused code for this user
     try:
@@ -797,13 +784,8 @@ def resend_2fa_code(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
-    # Get TwoFactorSettings
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        settings_obj = TwoFactorSettings.get_solo()
-
     # Generate and send new verification code
-    twofactor_code = generate_2fa_code(user, settings_obj, verification_type='TWO_FACTOR')
+    twofactor_code = generate_2fa_code(user, verification_type='TWO_FACTOR')
     send_2fa_code(user, twofactor_code.code, verification_type='TWO_FACTOR')
 
     return Response(

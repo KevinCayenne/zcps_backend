@@ -7,54 +7,7 @@ Extends Django's AbstractUser to add custom fields and functionality.
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
-from solo.models import SingletonModel
-
-
-class TwoFactorSettings(SingletonModel):
-    """
-    Singleton model for system-wide Two-Factor Authentication configuration.
-
-    Only one instance of this model can exist in the database.
-    Provides runtime-configurable 2FA settings through admin interface.
-    """
-
-    enforce_2fa_for_all_users = models.BooleanField(
-        default=False,
-        help_text='When enabled, all users must enable 2FA to access the system'
-    )
-
-    default_2fa_method = models.CharField(
-        max_length=20,
-        choices=[
-            ('EMAIL', 'Email'),
-            ('PHONE', 'Phone (coming soon)'),
-        ],
-        default='EMAIL',
-        help_text='Default 2FA method for users who have not set a preference'
-    )
-
-    code_expiration_seconds = models.PositiveIntegerField(
-        default=600,
-        help_text='Number of seconds before a 2FA code expires (default: 600 = 10 minutes)'
-    )
-
-    max_failed_attempts = models.PositiveIntegerField(
-        default=5,
-        help_text='Maximum number of failed verification attempts before code is locked'
-    )
-
-    temporary_token_lifetime_minutes = models.PositiveIntegerField(
-        default=10,
-        help_text='Lifetime of temporary 2FA tokens in minutes (used during login flow)'
-    )
-
-    class Meta:
-        verbose_name = 'Two-Factor Authentication Settings'
-        verbose_name_plural = 'Two-Factor Authentication Settings'
-
-    def __str__(self):
-        """Return string representation of settings."""
-        return "Two-Factor Authentication Settings"
+from django.conf import settings
 
 
 class User(AbstractUser):
@@ -167,13 +120,8 @@ class User(AbstractUser):
         if self.preferred_2fa_method:
             return self.preferred_2fa_method
 
-        # Get system default from TwoFactorSettings
-        try:
-            settings_obj = TwoFactorSettings.get_solo()
-            return settings_obj.default_2fa_method
-        except Exception:
-            # Fallback to EMAIL if settings not available
-            return 'EMAIL'
+        # Get system default from settings
+        return settings.TWOFACTOR_DEFAULT_METHOD
 
 
 class TwoFactorCode(models.Model):

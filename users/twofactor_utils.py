@@ -7,7 +7,6 @@ Provides code generation, validation, and email sending functionality.
 import secrets
 import logging
 from datetime import timedelta
-from functools import lru_cache
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -16,26 +15,6 @@ from django.utils import timezone
 from users.models import TwoFactorCode
 
 logger = logging.getLogger(__name__)
-
-
-@lru_cache(maxsize=1)
-def get_twofactor_settings():
-    """
-    Get TwoFactorSettings singleton instance with caching.
-
-    Returns cached settings object for performance.
-    Logs error if settings not found (should never happen after migration).
-
-    Returns:
-        TwoFactorSettings: The singleton settings instance
-    """
-    from users.models import TwoFactorSettings
-    try:
-        return TwoFactorSettings.get_solo()
-    except Exception as e:
-        logger.error(f"Failed to retrieve TwoFactorSettings: {str(e)}")
-        # Return None and let calling code handle fallback
-        return None
 
 
 def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
@@ -47,16 +26,11 @@ def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
 
     Args:
         user: User instance to generate code for
-        settings_obj: TwoFactorSettings instance (defaults to singleton)
         verification_type: Type of verification ('TWO_FACTOR')
 
     Returns:
         TwoFactorCode: The newly created code instance
     """
-    # Get settings object if not provided
-    if settings_obj is None:
-        settings_obj = get_twofactor_settings()
-
     # Invalidate any previous unused codes for this user with same verification type
     TwoFactorCode.objects.filter(
         user=user,
@@ -65,13 +39,8 @@ def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
     ).update(is_used=True)
 
     # Generate 6-digit numeric code using cryptographically secure random
-    if not settings_obj:
-        # This should never happen after migrations are run
-        logger.error("TwoFactorSettings not found. Please ensure migrations have been run.")
-        raise ValueError("TwoFactorSettings model not found. Run migrations first.")
-
     code_length = 6  # Always use 6 digits
-    expiration_seconds = settings_obj.code_expiration_seconds
+    expiration_seconds = settings.TWOFACTOR_CODE_EXPIRATION_SECONDS
 
     code = ''.join([str(secrets.randbelow(10)) for _ in range(code_length)])
 
@@ -145,12 +114,7 @@ def _send_2fa_code_via_email(user, code, verification_type='TWO_FACTOR'):
     purpose_text = 'two-factor authentication'
 
     # Get expiration time in minutes for display
-    settings_obj = get_twofactor_settings()
-    if not settings_obj:
-        logger.error("TwoFactorSettings not found. Please ensure migrations have been run.")
-        raise ValueError("TwoFactorSettings model not found. Run migrations first.")
-
-    expiration_seconds = settings_obj.code_expiration_seconds
+    expiration_seconds = settings.TWOFACTOR_CODE_EXPIRATION_SECONDS
     expiration_minutes = expiration_seconds // 60
 
     message = f"""Hi {user.first_name or user.username},

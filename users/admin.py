@@ -2,72 +2,13 @@
 Admin interface configuration for User model.
 """
 
-import json
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
-from django.contrib import messages
-from solo.admin import SingletonModelAdmin
 
-from users.models import TwoFactorCode, TwoFactorSettings
+from users.models import TwoFactorCode
 
 User = get_user_model()
-
-
-@admin.register(TwoFactorSettings)
-class TwoFactorSettingsAdmin(SingletonModelAdmin):
-    """Admin interface for TwoFactorSettings singleton model."""
-
-    fieldsets = (
-        ('Enforcement Policy', {
-            'fields': ('enforce_2fa_for_all_users', 'default_2fa_method'),
-            'description': 'Configure system-wide 2FA enforcement and default method'
-        }),
-        ('Code Settings', {
-            'fields': ('code_expiration_seconds',),
-            'description': 'Configure verification code expiration time'
-        }),
-        ('Security Limits', {
-            'fields': ('max_failed_attempts', 'temporary_token_lifetime_minutes'),
-            'description': 'Configure security thresholds for failed attempts and token lifetime'
-        }),
-        ('Status', {
-            'fields': ('active_2fa_users_count',),
-            'description': 'Current 2FA adoption statistics'
-        }),
-    )
-
-    readonly_fields = ('active_2fa_users_count',)
-
-    actions = ['preview_config_as_json']
-
-    def active_2fa_users_count(self, obj):
-        """Display count of users with 2FA enabled."""
-        count = User.objects.filter(is_2fa_enabled=True).count()
-        return f"{count} users"
-    active_2fa_users_count.short_description = "Currently Active Users with 2FA"
-
-    def preview_config_as_json(self, request, queryset):
-        """Preview current 2FA configuration as JSON."""
-        settings_obj = TwoFactorSettings.get_solo()
-        config_dict = {
-            'enforce_2fa_for_all_users': settings_obj.enforce_2fa_for_all_users,
-            'default_2fa_method': settings_obj.default_2fa_method,
-            'code_expiration_seconds': settings_obj.code_expiration_seconds,
-            'max_failed_attempts': settings_obj.max_failed_attempts,
-            'temporary_token_lifetime_minutes': settings_obj.temporary_token_lifetime_minutes,
-        }
-        json_config = json.dumps(config_dict, indent=2)
-        self.message_user(
-            request,
-            f"Current 2FA Configuration:\n{json_config}",
-            level=messages.SUCCESS
-        )
-    preview_config_as_json.short_description = "Preview current 2FA configuration"
-
-    def has_delete_permission(self, request, obj=None):
-        """Prevent deletion of singleton settings."""
-        return False
 
 
 @admin.register(User)

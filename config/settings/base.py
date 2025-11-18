@@ -5,21 +5,35 @@ This file contains shared settings used across all environments.
 Environment-specific settings are in development.py, testing.py, and production.py.
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
-from decouple import config
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Load secrets from .env file
+load_dotenv(BASE_DIR / '.env')
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-pdx_)j9t%_135!=8w@t8)gur2sd$+4_3mezx8%0se)wmcn)8zr')
+# Django secret key
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-pdx_)j9t%_135!=8w@t8)gur2sd$+4_3mezx8%0se)wmcn)8zr')
+
+# Database URL
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+# Google OAuth credentials
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+
+# Email password for SMTP
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = True
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()])
+# Allowed hosts - override in environment-specific settings
+ALLOWED_HOSTS = []
 
 
 # Application definition
@@ -40,7 +54,6 @@ INSTALLED_APPS = [
     'djoser',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'solo',  # Django Solo for singleton models
 
     # Allauth packages (must come before dj_rest_auth)
     'allauth',
@@ -134,19 +147,15 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 # Password Management Configuration
-# Password reset token expiration time in seconds (24 hours default)
-PASSWORD_RESET_TIMEOUT = config('PASSWORD_RESET_TIMEOUT', default=86400, cast=int)
+# Password reset token expiration time in seconds (24 hours)
+PASSWORD_RESET_TIMEOUT = 86400
 
 # Frontend URL for constructing password reset and email verification links
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+FRONTEND_URL = 'http://localhost:3000'
 
-# JWT token blacklisting on password change (optional, default: False)
+# JWT token blacklisting on password change
 # When True, all JWT tokens are blacklisted when user changes password
-BLACKLIST_TOKENS_ON_PASSWORD_CHANGE = config('BLACKLIST_TOKENS_ON_PASSWORD_CHANGE', default=False, cast=bool)
-
-# Email 2FA enforcement setting (placeholder for future roadmap item 7)
-# This setting is reserved for future multi-factor authentication implementation
-EMAIL_2FA_ENFORCEMENT = config('EMAIL_2FA_ENFORCEMENT', default=False, cast=bool)
+BLACKLIST_TOKENS_ON_PASSWORD_CHANGE = False
 
 
 # Internationalization
@@ -174,7 +183,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 # Email Configuration
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
+DEFAULT_FROM_EMAIL = 'noreply@example.com'
 
 
 # Django REST Framework Configuration
@@ -191,8 +200,8 @@ REST_FRAMEWORK = {
 
 # Simple JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('JWT_ACCESS_TOKEN_MINUTES', default=15, cast=int)),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=config('JWT_REFRESH_TOKEN_DAYS', default=7, cast=int)),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
@@ -209,7 +218,7 @@ SIMPLE_JWT = {
 
 # Djoser Configuration
 DJOSER = {
-    'SEND_ACTIVATION_EMAIL': config('SEND_ACTIVATION_EMAIL', default=True, cast=bool),
+    'SEND_ACTIVATION_EMAIL': True,
     'SEND_CONFIRMATION_EMAIL': False,
     'PASSWORD_CHANGED_EMAIL_CONFIRMATION': True,
     'ACTIVATION_URL': 'activate/{uid}/{token}',
@@ -283,8 +292,8 @@ SOCIALACCOUNT_PROVIDERS = {
             'email',
         ],
         'APP': {
-            'client_id': config('GOOGLE_OAUTH_CLIENT_ID', default=''),
-            'secret': config('GOOGLE_OAUTH_CLIENT_SECRET', default=''),
+            'client_id': GOOGLE_OAUTH_CLIENT_ID,
+            'secret': GOOGLE_OAUTH_CLIENT_SECRET,
             'key': ''
         },
         'AUTH_PARAMS': {
@@ -294,8 +303,8 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 # Google OAuth redirect URLs
-GOOGLE_OAUTH_SUCCESS_REDIRECT_URL = config('GOOGLE_OAUTH_SUCCESS_REDIRECT_URL', default='http://localhost:3000/auth/callback')
-GOOGLE_OAUTH_ERROR_REDIRECT_URL = config('GOOGLE_OAUTH_ERROR_REDIRECT_URL', default='http://localhost:3000/auth/error')
+GOOGLE_OAUTH_SUCCESS_REDIRECT_URL = 'http://localhost:3000/auth/callback'
+GOOGLE_OAUTH_ERROR_REDIRECT_URL = 'http://localhost:3000/auth/error'
 
 
 # dj-rest-auth Configuration
@@ -314,5 +323,8 @@ REST_AUTH = {
 
 
 # Two-Factor Authentication Configuration
-# All 2FA settings are now managed via the database-based TwoFactorSettings model.
-# Configure 2FA settings at: /admin/users/twofactorsettings/
+TWOFACTOR_ENFORCE_FOR_ALL_USERS = False
+TWOFACTOR_DEFAULT_METHOD = 'EMAIL'  # 'EMAIL' or 'PHONE'
+TWOFACTOR_CODE_EXPIRATION_SECONDS = 600  # 10 minutes
+TWOFACTOR_MAX_FAILED_ATTEMPTS = 5
+TWOFACTOR_TEMPORARY_TOKEN_LIFETIME_MINUTES = 10

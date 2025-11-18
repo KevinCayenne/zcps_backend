@@ -27,3 +27,6 @@ DATABASES = {
 
 # Disable activation emails for testing to allow immediate login
 DJOSER['SEND_ACTIVATION_EMAIL'] = False
+
+# Allowed hosts for testing
+ALLOWED_HOSTS = ['testserver', 'localhost', '127.0.0.1']
