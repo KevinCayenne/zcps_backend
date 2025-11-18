@@ -304,7 +304,7 @@ SOCIALACCOUNT_PROVIDERS = {
 
 # Google OAuth redirect URLs
 GOOGLE_OAUTH_SUCCESS_REDIRECT_URL = 'http://localhost:3000/oauth_test.html'
-GOOGLE_OAUTH_ERROR_REDIRECT_URL = 'http://localhost:3000/oauth_test.html'
+GOOGLE_OAUTH_ERROR_REDIRECT_URL = 'http://localhost:3000/oauth_error.html'
 
 
 # dj-rest-auth Configuration
