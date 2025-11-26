@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Load secrets from .env file
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / '.env.dev')
 
 # Django secret key
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-pdx_)j9t%_135!=8w@t8)gur2sd$+4_3mezx8%0se)wmcn)8zr')
@@ -161,9 +161,9 @@ BLACKLIST_TOKENS_ON_PASSWORD_CHANGE = False
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'zh-tw'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Taipei'
 
 USE_I18N = True
 
@@ -323,8 +323,22 @@ REST_AUTH = {
 
 
 # Two-Factor Authentication Configuration
-TWOFACTOR_ENFORCE_FOR_ALL_USERS = False
-TWOFACTOR_DEFAULT_METHOD = 'EMAIL'  # 'EMAIL' or 'PHONE'
-TWOFACTOR_CODE_EXPIRATION_SECONDS = 600  # 10 minutes
-TWOFACTOR_MAX_FAILED_ATTEMPTS = 5
-TWOFACTOR_TEMPORARY_TOKEN_LIFETIME_MINUTES = 10
+@dataclass(frozen=True)
+class TwoFactorConfig:
+    """Configuration for two-factor authentication."""
+    enforce_2fa_for_all_users: bool = False
+    default_2fa_method: str = 'EMAIL'  # 'EMAIL' or 'PHONE'
+    code_expiration_seconds: int = 600  # 10 minutes
+    max_failed_attempts: int = 5
+    temporary_token_lifetime_minutes: int = 10
+
+
+# Create frozen config instance
+TWOFACTOR_CONFIG = TwoFactorConfig()
+
+# Legacy settings for backward compatibility (will be deprecated)
+TWOFACTOR_ENFORCE_FOR_ALL_USERS = TWOFACTOR_CONFIG.enforce_2fa_for_all_users
+TWOFACTOR_DEFAULT_METHOD = TWOFACTOR_CONFIG.default_2fa_method
+TWOFACTOR_CODE_EXPIRATION_SECONDS = TWOFACTOR_CONFIG.code_expiration_seconds
+TWOFACTOR_MAX_FAILED_ATTEMPTS = TWOFACTOR_CONFIG.max_failed_attempts
+TWOFACTOR_TEMPORARY_TOKEN_LIFETIME_MINUTES = TWOFACTOR_CONFIG.temporary_token_lifetime_minutes

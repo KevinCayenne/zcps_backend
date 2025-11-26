@@ -32,8 +32,13 @@ class CleanupVerificationTests(TestCase):
     def test_migration_exists(self):
         """Test that migration to remove TwoFactorSettings exists."""
         import os
-        migration_path = '/Users/ofang/Documents/Github/django_boilerplate/users/migrations/0008_remove_twofactorsettings.py'
-        self.assertTrue(os.path.exists(migration_path),
+        from pathlib import Path
+        from django.conf import settings
+        
+        # Get the project base directory dynamically
+        base_dir = settings.BASE_DIR
+        migration_path = base_dir / 'users' / 'migrations' / '0008_remove_twofactorsettings.py'
+        self.assertTrue(migration_path.exists(),
                        "Migration 0008_remove_twofactorsettings.py should exist")
 
     def test_settings_uses_dataclass(self):
