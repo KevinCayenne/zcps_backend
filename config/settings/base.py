@@ -8,6 +8,7 @@ Environment-specific settings are in development.py, testing.py, and production.
 import os
 from pathlib import Path
 from datetime import timedelta
+from dataclasses import dataclass
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
