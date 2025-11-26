@@ -10,6 +10,9 @@ from users.models import TwoFactorCode
 
 User = get_user_model()
 
+admin.site.site_header = "DJBoilerplate 後台"
+admin.site.site_title = "DJBoilerplate 後台"
+admin.site.index_title = "DJBoilerplate"
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):

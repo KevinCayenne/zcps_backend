@@ -28,6 +28,7 @@ GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
 GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 
 # Email password for SMTP
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -66,6 +67,9 @@ INSTALLED_APPS = [
     'dj_rest_auth',
     'dj_rest_auth.registration',
 
+    # drf_api_logger packages
+    "drf_api_logger",
+
     # Local apps
     'users',
 ]
@@ -74,11 +78,15 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # CORS middleware (must be before CommonMiddleware)
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # WhiteNoise middleware (must be before CommonMiddleware)    
+    'users.middleware.AdminLanguageMiddleware',  # 強制 Admin 使用繁體中文 (必須在 LocaleMiddleware 之前)
+    'django.middleware.locale.LocaleMiddleware',  # 國際化中間件 (必須在 SessionMiddleware 之後，CommonMiddleware 之前)
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'drf_api_logger.middleware.api_logger_middleware.APILoggerMiddleware',
     'allauth.account.middleware.AccountMiddleware',  # Required by allauth
     'users.middleware.TemporaryTokenRestrictionMiddleware',  # Restrict temporary 2FA tokens
     'users.middleware.TwoFactorEnforcementMiddleware',  # 2FA enforcement middleware
@@ -170,11 +178,59 @@ USE_I18N = True
 
 USE_TZ = True
 
+USE_L10N = True
+
+# 支援的語言列表
+LANGUAGES = [
+    ('zh-tw', '繁體中文'),
+    ('en', 'English'),
+]
+
+# 語言檔案位置
+LOCALE_PATHS = [
+    BASE_DIR / 'locale',
+]
+
+# 強制使用預設語言（不依賴瀏覽器設定）
+# 如果設為 True，將忽略瀏覽器的 Accept-Language header
+# 如果設為 False，LocaleMiddleware 會根據瀏覽器語言選擇
+# 為了確保 Admin 顯示中文，建議設為 True
+USE_DEFAULT_LANGUAGE = True
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+"""
+DRF Logger
+====================
+"""
+DRF_API_LOGGER_DATABASE = True
+DRF_API_LOGGER_TIMEDELTA = 480
+DRF_API_LOGGER_METHODS = ["POST", "DELETE", "PUT", "PATCH"]
+
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/4.1/howto/static-files/
+
+"""
+靜態檔案 collectstatic 時的儲存位置。
+=====================================
+"""
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATIC_URL = "/static/"
+
+"""
+額外的靜態檔案路徑。
+====================
+"""
+STATICFILES_DIRS = (os.path.join(BASE_DIR, "djb", "static"),)
+
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+MEDIA_URL = "/media/"
+
+CKEDITOR_UPLOAD_PATH = "uploads/"
 
 
 # Default primary key field type
@@ -182,9 +238,11 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Increase Lambda function timeout
+AWS_LAMBDA_FUNCTION_TIMEOUT = 60
 
-# Email Configuration
-DEFAULT_FROM_EMAIL = 'noreply@example.com'
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
 # Django REST Framework Configuration
