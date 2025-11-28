@@ -31,6 +31,10 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 
+# Frontend URL for constructing password reset and email verification links
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+CLIENT_FRONTEND_URL = os.environ.get('CLIENT_FRONTEND_URL', 'http://localhost:3001')
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -56,6 +60,7 @@ INSTALLED_APPS = [
     'djoser',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'django_filters',
 
     # Allauth packages (must come before dj_rest_auth)
     'allauth',
@@ -72,6 +77,7 @@ INSTALLED_APPS = [
 
     # Local apps
     'users',
+    'clinic',
 ]
 
 MIDDLEWARE = [
@@ -79,7 +85,6 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # CORS middleware (must be before CommonMiddleware)
     'django.contrib.sessions.middleware.SessionMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # WhiteNoise middleware (must be before CommonMiddleware)    
-    'users.middleware.AdminLanguageMiddleware',  # 強制 Admin 使用繁體中文 (必須在 LocaleMiddleware 之前)
     'django.middleware.locale.LocaleMiddleware',  # 國際化中間件 (必須在 SessionMiddleware 之後，CommonMiddleware 之前)
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -158,9 +163,6 @@ AUTH_PASSWORD_VALIDATORS = [
 # Password Management Configuration
 # Password reset token expiration time in seconds (24 hours)
 PASSWORD_RESET_TIMEOUT = 86400
-
-# Frontend URL for constructing password reset and email verification links
-FRONTEND_URL = 'http://localhost:3000'
 
 # JWT token blacklisting on password change
 # When True, all JWT tokens are blacklisted when user changes password
@@ -281,7 +283,7 @@ DJOSER = {
     'SEND_CONFIRMATION_EMAIL': False,
     'PASSWORD_CHANGED_EMAIL_CONFIRMATION': True,
     'ACTIVATION_URL': 'activate/{uid}/{token}',
-    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',
+    'PASSWORD_RESET_CONFIRM_URL': 'reset-password/{uid}/{token}',
     'USERNAME_RESET_CONFIRM_URL': 'username/reset/confirm/{uid}/{token}',
     'USER_CREATE_PASSWORD_RETYPE': False,
     'SET_PASSWORD_RETYPE': False,

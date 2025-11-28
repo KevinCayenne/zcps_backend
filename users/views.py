@@ -4,7 +4,7 @@ Views for user authentication and profile management.
 Provides custom views for logout functionality with token blacklisting,
 and custom password management views with JWT token blacklisting.
 """
-
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -16,6 +16,12 @@ from djoser.views import UserViewSet
 from django.conf import settings
 from .serializers import LogoutSerializer
 from .utils import blacklist_user_tokens
+from .models import User
+from .permissions import IsStaffRolePermission
+from config.paginator import StandardResultsSetPagination
+from rest_framework import viewsets, filters
+from .serializers import UserSerializer, ClientUserSerializer
+from users.enums import UserRole
 
 
 class LogoutView(APIView):
@@ -1007,3 +1013,99 @@ class CustomUserViewSet(UserViewSet):
             blacklist_user_tokens(request.user)
 
         return response
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.order_by("-date_joined")
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsStaffRolePermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    fields = (
+        "first_name",
+        "last_name",
+        "is_active",
+        "username",
+        "last_login",
+        "email",
+        "role",
+        "clinic_user_permissions",
+        "created_at",
+        "updated_at",
+    )
+    filterset_fields = fields
+    ordering_fields = fields
+    ordering = ["username"]
+    pagination_class = StandardResultsSetPagination
+
+
+class ClientUserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.filter(role=UserRole.CLIENT).order_by("-date_joined")
+    serializer_class = ClientUserSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    fields = (
+        "first_name",
+        "last_name",
+        "is_active",
+        "username",
+        "phone_number",
+        "is_2fa_enabled",
+        "preferred_2fa_method",
+        "last_login",
+        "email",
+        "role",
+        "created_at",
+        "updated_at",
+    )
+    filterset_fields = fields
+    ordering_fields = fields
+    ordering = ["username"]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """
+        只返回當前用戶自己的資料（且 role 為 CLIENT）。
+        """
+        return User.objects.filter(
+            role=UserRole.CLIENT,
+            id=self.request.user.id
+        ).order_by("-date_joined")
+
+    def update(self, request, *args, **kwargs):
+        """
+        確保只能更新自己的資料。
+        """
+        instance = self.get_object()
+        if instance.id != request.user.id:
+            return Response(
+                {"detail": "您只能更新自己的資料。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        確保只能部分更新自己的資料。
+        """
+        instance = self.get_object()
+        if instance.id != request.user.id:
+            return Response(
+                {"detail": "您只能更新自己的資料。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        無法刪除用戶資料。
+        """
+        return Response(
+            {"detail": "無法刪除用戶資料。"},
+            status=status.HTTP_403_FORBIDDEN
+        )

@@ -1,14 +1,14 @@
-{% block subject %}Activate your account{% endblock subject %}
+{% block subject %}啟用您的帳號{% endblock subject %}
 
 {% block text_body %}
-Hello {{ user.username }},
+您好 {{ user.username }}，
 
-Welcome! Please verify your email address by clicking the link below:
+歡迎！請點擊下方連結以驗證您的電子郵件地址：
 
 {{ protocol }}://{{ domain }}/{{ url }}
 
-This verification link will expire soon, so please verify your email as soon as possible.
+此驗證連結即將過期，請盡快驗證您的電子郵件。
 
-Thanks,
-The Team
+謝謝，
+{{ site_name }} 團隊
 {% endblock text_body %}

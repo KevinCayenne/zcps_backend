@@ -10,6 +10,8 @@ from django.utils import timezone
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 
+from users.enums import UserRole
+
 class User(AbstractUser):
     """
     Custom User model extending AbstractUser.
@@ -18,6 +20,7 @@ class User(AbstractUser):
     Includes created_at and updated_at timestamps for auditing.
     Supports Google OAuth with google_id and profile_picture_url fields.
     Supports email-based two-factor authentication with tracking fields.
+    Includes role-based permission system with role field.
     """
 
     # Override email to make it required and unique
@@ -67,7 +70,7 @@ class User(AbstractUser):
     # Two-Factor Authentication fields
     is_2fa_enabled = models.BooleanField(
         verbose_name=_('是否啟用兩步驟驗證'),
-        default=False,
+        default=True,
         help_text='Whether user has enabled two-factor authentication'
     )
 
@@ -93,9 +96,8 @@ class User(AbstractUser):
             ('EMAIL', 'Email'),
             ('PHONE', 'Phone'),
         ],
-        blank=True,
-        null=True,
-        help_text='User preferred 2FA method (null uses system default)'
+        default='EMAIL',
+        help_text='User preferred 2FA method (default is EMAIL)'
     )
 
     phone_number_verified = models.BooleanField(
@@ -104,6 +106,14 @@ class User(AbstractUser):
         help_text='Whether user phone number has been verified for 2FA'
     )
 
+    # Role/Permission fields
+    role = models.CharField(
+        verbose_name=_('權限角色'),
+        max_length=20,
+        choices=UserRole.choices,
+        default=UserRole.CLIENT,
+        help_text='User role for permission management'
+    )
     # Add timestamp fields for auditing
     created_at = models.DateTimeField(
         verbose_name=_('建立日期'),

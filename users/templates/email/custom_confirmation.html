@@ -1,12 +1,12 @@
-{% block subject %}Account activated{% endblock subject %}
+{% block subject %}帳號已啟用{% endblock subject %}
 
 {% block text_body %}
-Hello {{ user.username }},
+您好 {{ user.username }}，
 
-Your account has been successfully activated!
+您的帳號已成功啟用！
 
-You can now log in and start using the application.
+您現在可以登入並開始使用應用程式。
 
-Thanks,
-The Team
+謝謝，
+{{ site_name }} 團隊
 {% endblock text_body %}

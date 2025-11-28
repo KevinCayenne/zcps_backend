@@ -29,9 +29,84 @@ class UserSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'phone_number',
+            'profile_picture_url',
+            'email_verified',
+            'phone_number_verified',
+            'is_2fa_enabled',
+            'twofa_setup_date',
+            'last_2fa_verification',
+            'preferred_2fa_method',
+            'role',
+            'is_active',
+            'last_login',
+            'date_joined',
             'created_at',
+            'updated_at',
         )
-        read_only_fields = ('id', 'created_at')
+        read_only_fields = (
+            'id', 
+            'created_at',
+            'updated_at',
+            'username',
+            'email_verified',
+            'phone_number_verified',
+            'twofa_setup_date',
+            'is_2fa_enabled',
+            'last_2fa_verification',
+            'preferred_2fa_method',
+            'role',
+            'is_active',
+            'last_login',
+            'date_joined',
+        )
+
+
+class ClientUserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for User model (read operations).
+
+    Used for displaying user profile information.
+    Excludes password and other sensitive fields.
+    """
+
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'profile_picture_url',
+            'email_verified',
+            'phone_number_verified',
+            'is_2fa_enabled',
+            'twofa_setup_date',
+            'last_2fa_verification',
+            'preferred_2fa_method',
+            'role',
+            'is_active',
+            'last_login',
+            'date_joined',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = (
+            'id', 
+            'created_at',
+            'updated_at',
+            'username',
+            'email_verified',
+            'phone_number_verified',
+            'twofa_setup_date',
+            'is_2fa_enabled',
+            'last_2fa_verification',
+            'role',
+            'is_active',
+            'last_login',
+            'date_joined',
+        )
 
 
 class UserCreateSerializer(DjoserUserCreateSerializer):

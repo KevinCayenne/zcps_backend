@@ -399,7 +399,8 @@ def disable_2fa(request):
     # Disable 2FA
     user.is_2fa_enabled = False
     user.twofa_setup_date = None
-    user.preferred_2fa_method = None
+    # Note: preferred_2fa_method is not cleared as the field has NOT NULL constraint
+    # This preserves user preference if they re-enable 2FA later
     user.save()
 
     # Invalidate any unused codes
