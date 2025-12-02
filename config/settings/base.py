@@ -35,6 +35,12 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 CLIENT_FRONTEND_URL = os.environ.get('CLIENT_FRONTEND_URL', 'http://localhost:3001')
 
+# Certificate API Configuration
+CERTIFICATE_API_BASE_URL = os.environ.get('CERTIFICATE_API_BASE_URL', 'https://tc-platform-service.turingcerts.com')
+CERTIFICATE_API_KEY = os.environ.get('CERTIFICATE_API_KEY', '')
+CERTIFICATE_TEMPLATE_ID = int(os.environ.get('CERTIFICATE_TEMPLATE_ID', '0')) if os.environ.get('CERTIFICATE_TEMPLATE_ID', '').strip() else None
+CERTIFICATE_PASSWORD = os.environ.get('CERTIFICATE_PASSWORD', '')
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -78,6 +84,7 @@ INSTALLED_APPS = [
     # Local apps
     'users',
     'clinic',
+    'logs',
 ]
 
 MIDDLEWARE = [
@@ -89,6 +96,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'logs.middleware.CurrentUserMiddleware',  # Store current user for action logging
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'drf_api_logger.middleware.api_logger_middleware.APILoggerMiddleware',

@@ -39,6 +39,8 @@ class User(AbstractUser):
         max_length=17,
         blank=True,
         null=True,
+        unique=True,
+        db_index=True,
         help_text='Phone number in international format (e.g., +1 234 5678901)'
     )
 

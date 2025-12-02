@@ -17,10 +17,11 @@ from django.conf import settings
 from .serializers import LogoutSerializer
 from .utils import blacklist_user_tokens
 from .models import User
-from .permissions import IsStaffRolePermission
+from .permissions import IsStaffRolePermission, IsAdminRolePermission
 from config.paginator import StandardResultsSetPagination
 from rest_framework import viewsets, filters
 from .serializers import UserSerializer, ClientUserSerializer
+from .filters import UserFilterSet
 from users.enums import UserRole
 
 
@@ -1016,9 +1017,48 @@ class CustomUserViewSet(UserViewSet):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.order_by("-date_joined")
+    queryset = User.objects.filter(role__in=[
+        UserRole.SUPER_ADMIN, 
+        UserRole.ADMIN, 
+        UserRole.CLINIC_ADMIN, 
+        UserRole.CLINIC_STAFF
+    ]).order_by("-date_joined")
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, IsStaffRolePermission]
+    permission_classes = [IsAuthenticated, IsAdminRolePermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    filterset_class = UserFilterSet
+    ordering_fields = [
+        "first_name",
+        "last_name",
+        "is_active",
+        "username",
+        "last_login",
+        "email",
+        "phone_number",
+        "role",
+        "created_at",
+        "updated_at",
+    ]
+    ordering = ["username"]
+    pagination_class = StandardResultsSetPagination
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        無法刪除用戶資料。
+        """
+        return Response(
+            {"detail": "無法刪除用戶資料。"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+
+class ClientUserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.filter(role=UserRole.CLIENT).order_by("-date_joined")
+    serializer_class = ClientUserSerializer
+    permission_classes = [IsAuthenticated, IsAdminRolePermission]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
@@ -1028,10 +1068,12 @@ class UserViewSet(viewsets.ModelViewSet):
         "last_name",
         "is_active",
         "username",
+        "phone_number",
+        "is_2fa_enabled",
+        "preferred_2fa_method",
         "last_login",
         "email",
         "role",
-        "clinic_user_permissions",
         "created_at",
         "updated_at",
     )
@@ -1040,8 +1082,17 @@ class UserViewSet(viewsets.ModelViewSet):
     ordering = ["username"]
     pagination_class = StandardResultsSetPagination
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        無法刪除用戶資料。
+        """
+        return Response(
+            {"detail": "無法刪除用戶資料。"},
+            status=status.HTTP_403_FORBIDDEN
+        )
 
-class ClientUserViewSet(viewsets.ModelViewSet):
+
+class ClientUserOuterViewSet(viewsets.ModelViewSet):
     queryset = User.objects.filter(role=UserRole.CLIENT).order_by("-date_joined")
     serializer_class = ClientUserSerializer
     permission_classes = [IsAuthenticated]
@@ -1073,7 +1124,6 @@ class ClientUserViewSet(viewsets.ModelViewSet):
         只返回當前用戶自己的資料（且 role 為 CLIENT）。
         """
         return User.objects.filter(
-            role=UserRole.CLIENT,
             id=self.request.user.id
         ).order_by("-date_joined")
 

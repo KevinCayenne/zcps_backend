@@ -281,6 +281,8 @@ def verify_setup_2fa(request):
     user.is_2fa_enabled = True
     user.twofa_setup_date = timezone.now()
     user.preferred_2fa_method = pending_method
+    # Automatically verify email since user successfully received and verified the code
+    user.email_verified = True
     user.save()
 
     # Clear session

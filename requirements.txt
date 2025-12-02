@@ -8,6 +8,9 @@ dj-database-url==2.1.0
 djangorestframework==3.16.1
 django-cors-headers==4.9.0
 
+# HTTP Requests
+requests>=2.31.0
+
 # Django Filters
 django-filter==25.2
 

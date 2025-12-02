@@ -14,11 +14,17 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     """
-    Serializer for User model (read operations).
+    Serializer for User model (read and write operations).
 
-    Used for displaying user profile information.
-    Excludes password and other sensitive fields.
+    Used for displaying and creating user profile information.
+    Automatically generates unique username if not provided during creation.
     """
+
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text='Username (optional, will be auto-generated from email if not provided)'
+    )
 
     class Meta:
         model = User
@@ -44,21 +50,68 @@ class UserSerializer(serializers.ModelSerializer):
             'updated_at',
         )
         read_only_fields = (
-            'id', 
+            'id',
+            'username',
+            'password',
             'created_at',
             'updated_at',
-            'username',
             'email_verified',
             'phone_number_verified',
             'twofa_setup_date',
-            'is_2fa_enabled',
             'last_2fa_verification',
-            'preferred_2fa_method',
-            'role',
-            'is_active',
             'last_login',
             'date_joined',
         )
+
+    def create(self, validated_data):
+        """
+        Create a new user instance.
+        
+        Automatically generates a unique username if not provided or empty.
+        Username is generated from email address.
+        """
+        import uuid
+        
+        # Get username from validated_data
+        username = validated_data.get('username', '').strip() if validated_data.get('username') else ''
+        
+        # If username is provided and already exists, raise validation error
+        if username and User.objects.filter(username=username).exists():
+            raise serializers.ValidationError({
+                'username': ['此使用者帳號已被使用。']
+            })
+
+        # If username is not provided or is empty, generate one from email
+        if not username:
+            email = validated_data.get('email', '')
+            if email:
+                # Generate username from email (part before @)
+                base_username = email.split('@')[0]
+                # Remove any non-alphanumeric characters except underscore
+                base_username = ''.join(c for c in base_username if c.isalnum() or c == '_')
+                # Ensure it's not empty
+                if not base_username:
+                    base_username = 'user'
+                
+                # Make it unique by appending a counter if needed
+                username = base_username
+                counter = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{base_username}_{counter}"
+                    counter += 1
+                    # Safety limit to prevent infinite loop
+                    if counter > 1000:
+                        username = f"{base_username}_{uuid.uuid4().hex[:8]}"
+                        break
+            else:
+                # Fallback if no email (shouldn't happen, but just in case)
+                username = f"user_{uuid.uuid4().hex[:8]}"
+        
+        # Set the username (generated or provided)
+        validated_data['username'] = username
+        
+        # Create the user
+        return super().create(validated_data)
 
 
 class ClientUserSerializer(serializers.ModelSerializer):

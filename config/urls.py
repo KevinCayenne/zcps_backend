@@ -12,7 +12,19 @@ from users.twofactor_views import (
     enable_2fa, verify_setup_2fa, disable_2fa, get_2fa_status,
     verify_2fa_login, resend_2fa_code
 )
-from users.views import UserViewSet, ClientUserViewSet
+from users.certificate_views import (
+    GetTemplateView,
+    IssueCertificatesToNewGroupView,
+    IssueCertificatesToExistingGroupView,
+    IssueCertificatesWithTemplateView
+)
+from clinic.views import (
+    SubmitCertificateApplicationView,
+    VerifyCertificateTokenView,
+    DoctorViewSet
+)
+from users.views import UserViewSet, ClientUserViewSet, ClientUserOuterViewSet
+from logs.views import ActionLogsViewSet
 from users.jwt_views import CustomTokenObtainPairView, CustomTokenRefreshView, CustomTokenVerifyView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from rest_framework import routers
@@ -20,8 +32,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 router = routers.DefaultRouter()
-router.register(r"users", UserViewSet, basename="user")
-router.register(r"client", ClientUserViewSet, basename="client")
+router.register(r"users", UserViewSet, basename="users")
+router.register(r"clients", ClientUserViewSet, basename="clients")
+router.register(r"clients_outer", ClientUserOuterViewSet, basename="clients_outer")
+router.register(r"logs", ActionLogsViewSet, basename="action_logs")
+router.register(r"doctors", DoctorViewSet, basename="doctors")
 
 urlpatterns = [
     path('api/', include(router.urls)),
@@ -58,6 +73,16 @@ urlpatterns = [
     path('auth/2fa/status/', get_2fa_status, name='2fa_status'),
     path('auth/2fa/verify/', verify_2fa_login, name='2fa_verify_login'),
     path('auth/2fa/resend/', resend_2fa_code, name='2fa_resend'),
+    
+    # Certificate endpoints
+    path('api/certificates/templates/get-template/', GetTemplateView.as_view(), name='get_template'),
+    path('api/certificates/issue-to-new-group/', IssueCertificatesToNewGroupView.as_view(), name='issue_certificates_to_new_group'),
+    path('api/certificates/issue-to-existing-group/', IssueCertificatesToExistingGroupView.as_view(), name='issue_certificates_to_existing_group'),
+    path('api/certificates/issue-with-template/', IssueCertificatesWithTemplateView.as_view(), name='issue_certificates_with_template'),
+    
+    # Certificate application endpoints
+    path('api/certificates/submit-application/', SubmitCertificateApplicationView.as_view(), name='submit_certificate_application'),
+    path('api/certificates/verify-token/', VerifyCertificateTokenView.as_view(), name='verify_certificate_token'),
 ]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
