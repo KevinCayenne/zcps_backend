@@ -11,16 +11,53 @@ class Clinic(BaseModel):
     """
     Clinic model.
     """
-    name = models.CharField(max_length=255, verbose_name=_('診所名稱'))
-    address = models.CharField(max_length=255, verbose_name=_('地址'), blank=True, null=True)
-    phone = models.CharField(max_length=255, verbose_name=_('電話'), blank=True, null=True)
-    email = models.EmailField(max_length=255, verbose_name=_('電子郵件'), blank=True, null=True)
-    website = models.URLField(max_length=255, verbose_name=_('網站'), blank=True, null=True)
+    name = models.CharField(
+        max_length=255, 
+        verbose_name=_('診所名稱'),
+        help_text=_('診所名稱')
+    )
+    number = models.CharField(
+        max_length=255, 
+        verbose_name=_('編號'), 
+        unique=True,
+        help_text=_('診所編號')
+    )
+    address = models.CharField(
+        max_length=255, 
+        verbose_name=_('地址'), 
+        blank=True, 
+        null=True,
+        help_text=_('診所地址')
+    )
+    phone = models.CharField(
+        max_length=255, 
+        verbose_name=_('電話'), 
+        blank=True, 
+        null=True, 
+        help_text=_('診所電話')
+    )
+    email = models.EmailField(
+        max_length=255, 
+        verbose_name=_('電子郵件'), 
+        blank=True, 
+        null=True,
+        help_text=_('診所電子郵件')
+    )
+    website = models.URLField(
+        max_length=255, 
+        verbose_name=_('網站'), 
+        blank=True, 
+        null=True, 
+        help_text=_('診所網站')
+    )
 
     class Meta:
         verbose_name = _('診所')
         verbose_name_plural = _('診所')
         ordering = ['-name']
+
+    def __str__(self):
+        return self.name
 
 
 class ClinicUserPermission(BaseModel):
@@ -39,9 +76,16 @@ class ClinicUserPermission(BaseModel):
         verbose_name=_('診所'), 
         related_name='clinic_user_permissions'
     )
+    
     class Meta:
         verbose_name = _('診所用戶權限')
         verbose_name_plural = _('診所用戶權限')
+    
+    def __str__(self):
+        """返回診所用戶權限的字符串表示"""
+        user_name = self.user.username if self.user else 'Unknown'
+        clinic_name = self.clinic.name if self.clinic else 'Unknown'
+        return f"{user_name} - {clinic_name}"
 
 
 class Doctor(BaseModel):

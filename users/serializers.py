@@ -11,6 +11,14 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
+# 避免循環導入，在需要時才導入
+# 注意：不能導入 clinic.serializers，因為它會導入 UserSerializer，造成循環導入
+try:
+    from clinic.models import ClinicUserPermission, Clinic
+except ImportError:
+    ClinicUserPermission = None
+    Clinic = None
+
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -24,6 +32,19 @@ class UserSerializer(serializers.ModelSerializer):
         required=False,
         allow_blank=True,
         help_text='Username (optional, will be auto-generated from email if not provided)'
+    )
+    
+    # 診所權限相關欄位
+    clinic_permissions = serializers.SerializerMethodField(
+        read_only=True,
+        help_text='該用戶的診所權限列表（只讀）'
+    )
+    clinic_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+        help_text='診所 ID 列表（寫入時用於設置該用戶的診所權限）'
     )
 
     class Meta:
@@ -48,6 +69,8 @@ class UserSerializer(serializers.ModelSerializer):
             'date_joined',
             'created_at',
             'updated_at',
+            'clinic_permissions',
+            'clinic_ids',
         )
         read_only_fields = (
             'id',
@@ -61,7 +84,50 @@ class UserSerializer(serializers.ModelSerializer):
             'last_2fa_verification',
             'last_login',
             'date_joined',
+            'clinic_permissions',
         )
+    
+    def get_clinic_permissions(self, obj):
+        """獲取該用戶的所有診所權限"""
+        if ClinicUserPermission is None:
+            return []
+        
+        permissions = ClinicUserPermission.objects.filter(user=obj).select_related('clinic')
+        
+        # 直接返回簡化版本，避免使用 ClinicUserPermissionSerializer
+        # 因為 ClinicUserPermissionSerializer 使用 UserSerializer，會造成循環引用
+        return [
+            {
+                'id': perm.id,
+                'clinic_id': perm.clinic.id,
+                'clinic_name': perm.clinic.name,
+                'clinic_number': perm.clinic.number if hasattr(perm.clinic, 'number') else None,
+                'create_time': perm.create_time,
+                'update_time': perm.update_time,
+            }
+            for perm in permissions
+        ]
+    
+    def validate_clinic_ids(self, value):
+        """驗證診所 ID 列表"""
+        if Clinic is None:
+            raise serializers.ValidationError("診所模組未可用")
+        
+        if not isinstance(value, list):
+            raise serializers.ValidationError("clinic_ids 必須是一個列表")
+        
+        # 驗證所有診所是否存在
+        clinic_ids = list(set(value))  # 去重
+        existing_clinics = Clinic.objects.filter(id__in=clinic_ids)
+        existing_ids = set(existing_clinics.values_list('id', flat=True))
+        missing_ids = set(clinic_ids) - existing_ids
+        
+        if missing_ids:
+            raise serializers.ValidationError(
+                f"以下診所 ID 不存在: {', '.join(map(str, missing_ids))}"
+            )
+        
+        return clinic_ids
 
     def create(self, validated_data):
         """
@@ -153,10 +219,8 @@ class ClientUserSerializer(serializers.ModelSerializer):
             'email_verified',
             'phone_number_verified',
             'twofa_setup_date',
-            'is_2fa_enabled',
             'last_2fa_verification',
             'role',
-            'is_active',
             'last_login',
             'date_joined',
         )

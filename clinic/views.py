@@ -15,20 +15,311 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import (
     extend_schema, OpenApiResponse, OpenApiExample, OpenApiParameter, inline_serializer
 )
+from users.permissions import IsAdminRolePermission
 
 from users.models import User
-from clinic.models import Clinic, CertificateApplication, Doctor
+from clinic.models import Clinic, CertificateApplication, Doctor, ClinicUserPermission
 from clinic.enums import CertificateApplicationStatus
 from clinic.serializers import (
     CertificateApplicationCreateSerializer,
     CertificateApplicationSerializer,
     CertificateVerificationSerializer,
     ClinicSerializer,
-    DoctorSerializer
+    DoctorSerializer,
+    ClinicUserPermissionSerializer
 )
 from config.paginator import StandardResultsSetPagination
+from clinic.filters import ClinicFilterSet
 
 logger = logging.getLogger(__name__)
+
+
+class ClinicViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing clinics.
+    
+    Provides CRUD operations for clinics:
+    - List: GET /api/clinics/ (with filtering, searching, ordering)
+    - Create: POST /api/clinics/
+    - Retrieve: GET /api/clinics/{id}/
+    - Update: PUT/PATCH /api/clinics/{id}/
+    - Delete: DELETE /api/clinics/{id}/
+    """
+    queryset = Clinic.objects.all().order_by('-create_time')
+    serializer_class = ClinicSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+        filters.SearchFilter,
+    ]
+    filterset_class = ClinicFilterSet
+    ordering_fields = [
+        'name',
+        'number',
+        'address',
+        'phone',
+        'email',
+        'website',
+        'create_time',
+        'update_time',
+    ]
+    ordering = ['name']
+    search_fields = ['name', 'number', 'address', 'phone', 'email', 'website']
+    pagination_class = StandardResultsSetPagination
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        刪除診所資料。
+        
+        如果診所有相關聯的資料（診所用戶權限、醫生、證書申請），則無法刪除。
+        """
+        instance = self.get_object()
+        
+        # 檢查是否有相關聯的資料
+        related_data = []
+        
+        # 檢查診所用戶權限
+        clinic_user_permissions_count = instance.clinic_user_permissions.count()
+        if clinic_user_permissions_count > 0:
+            related_data.append(f"診所用戶權限 ({clinic_user_permissions_count} 筆)")
+        
+        # 檢查診所醫生
+        doctors_count = instance.doctors.count()
+        if doctors_count > 0:
+            related_data.append(f"診所醫生 ({doctors_count} 筆)")
+        
+        # 檢查證書申請
+        certificate_applications_count = instance.certificate_applications.count()
+        if certificate_applications_count > 0:
+            related_data.append(f"證書申請 ({certificate_applications_count} 筆)")
+        
+        # 如果有相關聯的資料，返回錯誤
+        if related_data:
+            error_message = f"無法刪除診所資料，因為存在以下相關聯的資料：{', '.join(related_data)}。請先刪除相關資料後再嘗試刪除診所。"
+            return Response(
+                {
+                    "detail": error_message,
+                    "related_data": related_data
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 如果沒有相關聯的資料，執行刪除
+        return super().destroy(request, *args, **kwargs)
+
+
+class ClinicUserPermissionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing clinic user permissions.
+    
+    Provides CRUD operations for clinic-user permission relationships:
+    - List: GET /api/clinic-permissions/ (with optional clinic_id and user_id filters)
+    - Create: POST /api/clinic-permissions/
+    - Retrieve: GET /api/clinic-permissions/{id}/
+    - Update: PUT/PATCH /api/clinic-permissions/{id}/
+    - Delete: DELETE /api/clinic-permissions/{id}/
+    """
+    queryset = ClinicUserPermission.objects.select_related('clinic', 'user').all().order_by('-create_time')
+    serializer_class = ClinicUserPermissionSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+        filters.SearchFilter,
+    ]
+    filterset_fields = ['clinic', 'user']
+    ordering_fields = ['create_time', 'update_time']
+    ordering = ['-create_time']
+    search_fields = ['clinic__name', 'user__username', 'user__email']
+    pagination_class = StandardResultsSetPagination
+    
+    @extend_schema(
+        tags=['Clinic Permissions'],
+        summary='List clinic user permissions',
+        description="""
+        獲取診所用戶權限列表。
+        
+        **查詢參數：**
+        - `clinic`: 診所 ID（可選，用於篩選特定診所的權限）
+        - `user`: 用戶 ID（可選，用於篩選特定用戶的權限）
+        - `search`: 搜尋關鍵字（可選，會搜尋診所名稱、用戶名、用戶 email）
+        - `ordering`: 排序欄位（可選，如：create_time, -create_time）
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='clinic',
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='診所 ID（用於篩選特定診所的權限）'
+            ),
+            OpenApiParameter(
+                name='user',
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='用戶 ID（用於篩選特定用戶的權限）'
+            ),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        """獲取診所用戶權限列表"""
+        return super().list(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Clinic Permissions'],
+        summary='Create clinic user permission',
+        description="""
+        創建診所用戶權限關係。
+        
+        **必填欄位：**
+        - `clinic_id`: 診所 ID
+        - `user_id`: 用戶 ID
+        
+        **注意事項：**
+        - 同一用戶和診所的組合應該是唯一的
+        - 如果已存在相同的權限關係，可能會返回錯誤
+        """,
+        examples=[
+            OpenApiExample(
+                'Create Permission Request',
+                value={
+                    "clinic_id": 1,
+                    "user_id": 1
+                },
+                request_only=True,
+            ),
+        ],
+    )
+    def create(self, request, *args, **kwargs):
+        """創建診所用戶權限"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # 驗證必填欄位
+        if 'clinic_id' not in serializer.validated_data:
+            return Response(
+                {'error': 'clinic_id 是必填欄位'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if 'user_id' not in serializer.validated_data:
+            return Response(
+                {'error': 'user_id 是必填欄位'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 獲取診所和用戶（已在 serializer 中驗證）
+        clinic_id = serializer.validated_data.pop('clinic_id')
+        clinic = Clinic.objects.get(id=clinic_id)
+        
+        user_id = serializer.validated_data.pop('user_id')
+        user = User.objects.get(id=user_id)
+        
+        # 檢查是否已存在相同的權限關係
+        if ClinicUserPermission.objects.filter(clinic=clinic, user=user).exists():
+            return Response(
+                {'error': '該用戶已擁有此診所的權限'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 創建權限關係
+        permission = serializer.save(
+            clinic=clinic,
+            user=user,
+            create_user=request.user if request.user.is_authenticated else None
+        )
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+    
+    @extend_schema(
+        tags=['Clinic Permissions'],
+        summary='Retrieve clinic user permission',
+        description="獲取診所用戶權限詳細資訊。"
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """獲取診所用戶權限詳細資訊"""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Clinic Permissions'],
+        summary='Update clinic user permission',
+        description="""
+        更新診所用戶權限關係。
+        
+        使用 PUT 進行完整更新，或使用 PATCH 進行部分更新。
+        """,
+        examples=[
+            OpenApiExample(
+                'Update Permission Request (PATCH)',
+                value={
+                    "clinic_id": 2,
+                    "user_id": 1
+                },
+                request_only=True,
+            ),
+        ],
+    )
+    def update(self, request, *args, **kwargs):
+        """更新診所用戶權限"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        # 如果更新了 clinic_id，獲取診所對象（已在 serializer 中驗證）
+        if 'clinic_id' in serializer.validated_data:
+            clinic_id = serializer.validated_data.pop('clinic_id')
+            clinic = Clinic.objects.get(id=clinic_id)
+            serializer.validated_data['clinic'] = clinic
+        
+        # 如果更新了 user_id，獲取用戶對象（已在 serializer 中驗證）
+        if 'user_id' in serializer.validated_data:
+            user_id = serializer.validated_data.pop('user_id')
+            user = User.objects.get(id=user_id)
+            serializer.validated_data['user'] = user
+        
+        # 檢查更新後的組合是否已存在（排除當前實例）
+        clinic = serializer.validated_data.get('clinic', instance.clinic)
+        user = serializer.validated_data.get('user', instance.user)
+        
+        if ClinicUserPermission.objects.filter(clinic=clinic, user=user).exclude(id=instance.id).exists():
+            return Response(
+                {'error': '該用戶已擁有此診所的權限'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        self.perform_update(serializer)
+        
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        
+        return Response(serializer.data)
+    
+    @extend_schema(
+        tags=['Clinic Permissions'],
+        summary='Partial update clinic user permission',
+        description="部分更新診所用戶權限關係（PATCH）。"
+    )
+    def partial_update(self, request, *args, **kwargs):
+        """部分更新診所用戶權限"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Clinic Permissions'],
+        summary='Delete clinic user permission',
+        description="刪除診所用戶權限關係。"
+    )
+    def destroy(self, request, *args, **kwargs):
+        """刪除診所用戶權限"""
+        return super().destroy(request, *args, **kwargs)
 
 
 class SubmitCertificateApplicationView(APIView):
@@ -395,7 +686,7 @@ class DoctorViewSet(viewsets.ModelViewSet):
     """
     queryset = Doctor.objects.select_related('clinic', 'user').all().order_by('-create_time')
     serializer_class = DoctorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminRolePermission]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,

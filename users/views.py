@@ -24,6 +24,13 @@ from .serializers import UserSerializer, ClientUserSerializer
 from .filters import UserFilterSet
 from users.enums import UserRole
 
+# 導入診所相關模組
+try:
+    from clinic.models import ClinicUserPermission, Clinic
+except ImportError:
+    ClinicUserPermission = None
+    Clinic = None
+
 
 class LogoutView(APIView):
     """
@@ -1044,6 +1051,100 @@ class UserViewSet(viewsets.ModelViewSet):
     ]
     ordering = ["username"]
     pagination_class = StandardResultsSetPagination
+
+    def create(self, request, *args, **kwargs):
+        """
+        創建用戶資料，並處理診所權限
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # 提取 clinic_ids（如果提供）
+        clinic_ids = serializer.validated_data.pop('clinic_ids', None)
+        
+        # 創建用戶
+        user = serializer.save()
+        
+        # 設置診所權限（如果提供了 clinic_ids）
+        if clinic_ids is not None:
+            self._update_clinic_permissions(user, clinic_ids)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+
+    def _update_clinic_permissions(self, user, clinic_ids):
+        """
+        更新用戶的診所權限
+        
+        Args:
+            user: User 實例
+            clinic_ids: 診所 ID 列表
+        """
+        if ClinicUserPermission is None or Clinic is None:
+            return
+        
+        # 獲取當前用戶的診所權限
+        current_permissions = ClinicUserPermission.objects.filter(user=user)
+        current_clinic_ids = set(current_permissions.values_list('clinic_id', flat=True))
+        target_clinic_ids = set(clinic_ids) if clinic_ids else set()
+        
+        # 找出需要添加的診所
+        to_add = target_clinic_ids - current_clinic_ids
+        # 找出需要刪除的診所
+        to_remove = current_clinic_ids - target_clinic_ids
+        
+        # 添加新的權限
+        for clinic_id in to_add:
+            clinic = Clinic.objects.get(id=clinic_id)
+            # 檢查是否已存在（避免重複）
+            if not ClinicUserPermission.objects.filter(user=user, clinic=clinic).exists():
+                ClinicUserPermission.objects.create(
+                    user=user,
+                    clinic=clinic,
+                    create_user=self.request.user if self.request.user.is_authenticated else None
+                )
+        
+        # 刪除不需要的權限
+        if to_remove:
+            ClinicUserPermission.objects.filter(
+                user=user,
+                clinic_id__in=to_remove
+            ).delete()
+
+    def update(self, request, *args, **kwargs):
+        """
+        更新用戶資料，並處理診所權限
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        # 提取 clinic_ids（如果提供）
+        clinic_ids = serializer.validated_data.pop('clinic_ids', None)
+        
+        # 更新用戶資料
+        self.perform_update(serializer)
+        
+        # 更新診所權限（如果提供了 clinic_ids）
+        if clinic_ids is not None:
+            self._update_clinic_permissions(instance, clinic_ids)
+        
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        部分更新用戶資料，並處理診所權限
+        """
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         """

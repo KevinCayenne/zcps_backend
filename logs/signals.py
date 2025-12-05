@@ -32,13 +32,15 @@ def log_create_update(sender, instance, created, **kwargs):
     action = "CREATE" if created else "UPDATE"
 
     if sender.__name__ in MONITORED_MODELS:
-        if get_model_changes(instance) != "":
+        changes = get_model_changes(instance, created)
+        # 對於 CREATE 操作，即使 changes 為空也應該記錄
+        if changes != "" or created:
             ActionLog.objects.create(
                 user=get_current_user(),
                 model_name=sender.__name__,
                 action=action,
                 object_id=instance.pk,
-                changes=get_model_changes(instance),
+                changes=changes if changes else str(instance),
             )
 
 
@@ -59,10 +61,11 @@ def log_delete(sender, instance, **kwargs):
 
 
 # Helper functions
-def get_model_changes(instance):
+def get_model_changes(instance, created=False):
     changes = []
 
-    if hasattr(instance, "_old_instance"):
+    if hasattr(instance, "_old_instance") and instance._old_instance is not None:
+        # UPDATE operation: compare old and new values
         old_instance = instance._old_instance  # The old state of the model
 
         for field in instance._meta.fields:
@@ -88,7 +91,15 @@ def get_model_changes(instance):
 
         # Return all changes as a single string
         return "".join(changes) if changes else ""
-
+    
     # For CREATE operations, return a string representation of the instance
+    if created:
+        # 對於 CREATE 操作，返回實例的關鍵信息
+        if hasattr(instance, '__str__'):
+            return str(instance)
+        else:
+            # 如果沒有 __str__ 方法，返回模型名稱和主鍵
+            return f"{instance.__class__.__name__} #{instance.pk}"
+    
     # For UPDATE operations without old_instance, return empty string
-    return str(instance) if not hasattr(instance, 'pk') or instance.pk is None else ""
+    return ""

@@ -127,8 +127,8 @@ class User(AbstractUser):
     )
 
     class Meta:
-        verbose_name = _('user')
-        verbose_name_plural = _('users')    
+        verbose_name = _('使用者')
+        verbose_name_plural = _('使用者')    
         ordering = ['-created_at']
 
     def __str__(self):

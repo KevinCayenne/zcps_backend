@@ -19,12 +19,15 @@ from users.certificate_views import (
     IssueCertificatesWithTemplateView
 )
 from clinic.views import (
+    ClinicViewSet,
     SubmitCertificateApplicationView,
     VerifyCertificateTokenView,
-    DoctorViewSet
+    DoctorViewSet,
+    ClinicUserPermissionViewSet
 )
 from users.views import UserViewSet, ClientUserViewSet, ClientUserOuterViewSet
 from logs.views import ActionLogsViewSet
+from announcement.views import AnnouncementViewSet
 from users.jwt_views import CustomTokenObtainPairView, CustomTokenRefreshView, CustomTokenVerifyView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from rest_framework import routers
@@ -35,8 +38,11 @@ router = routers.DefaultRouter()
 router.register(r"users", UserViewSet, basename="users")
 router.register(r"clients", ClientUserViewSet, basename="clients")
 router.register(r"clients_outer", ClientUserOuterViewSet, basename="clients_outer")
+router.register(r"clinics", ClinicViewSet, basename="clinics")
+router.register(r"clinic-permissions", ClinicUserPermissionViewSet, basename="clinic-permissions")
 router.register(r"logs", ActionLogsViewSet, basename="action_logs")
 router.register(r"doctors", DoctorViewSet, basename="doctors")
+router.register(r"announcements", AnnouncementViewSet, basename="announcements")
 
 urlpatterns = [
     path('api/', include(router.urls)),
