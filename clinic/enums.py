@@ -20,4 +20,3 @@ class CertificateApplicationStatus:
         (ISSUED, _('已發證')),
         (EXPIRED, _('已過期')),
     ]
-

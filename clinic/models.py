@@ -213,7 +213,33 @@ class CertificateApplication(BaseModel):
         on_delete=models.CASCADE,
         verbose_name=_('診所'),
         related_name='certificate_applications',
-        help_text=_('證書所屬的診所')
+        help_text=_('證書所屬的診所（主要診所）')
+    )
+    
+    consultation_clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.SET_NULL,
+        verbose_name=_('諮詢診所'),
+        related_name='consultation_certificate_applications',
+        blank=True,
+        null=True,
+        help_text=_('諮詢診所')
+    )
+    
+    surgeon_name = models.CharField(
+        max_length=255,
+        verbose_name=_('手術醫師'),
+        blank=True,
+        null=True,
+        help_text=_('手術醫師姓名')
+    )
+    
+    consultant_name = models.CharField(
+        max_length=255,
+        verbose_name=_('諮詢師'),
+        blank=True,
+        null=True,
+        help_text=_('諮詢師姓名')
     )
     
     # 證書資料（JSON 格式存儲）

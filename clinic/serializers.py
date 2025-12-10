@@ -43,6 +43,8 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
     """
     clinic = ClinicSerializer(read_only=True)
     clinic_id = serializers.IntegerField(write_only=True, required=False)
+    consultation_clinic = ClinicSerializer(read_only=True)
+    consultation_clinic_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     user_id = serializers.IntegerField(write_only=True, required=False)
     user_email = serializers.EmailField(source='user.email', read_only=True)
     user_username = serializers.CharField(source='user.username', read_only=True)
@@ -60,6 +62,11 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
             'user_username',
             'clinic',
             'clinic_id',
+            'consultation_clinic',
+            'consultation_clinic_id',
+            'surgeon_name',
+            'consultant_name',
+            'information_source',
             'applicant_name',
             'applicant_email',
             'applicant_phone',
@@ -100,6 +107,18 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
     def get_applicant_phone(self, obj) -> str:
         """從用戶獲取申請人電話"""
         return obj.get_applicant_phone() or ''
+    
+    def validate_clinic_id(self, value):
+        """驗證診所是否存在"""
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("診所不存在")
+        return value
+    
+    def validate_consultation_clinic_id(self, value):
+        """驗證諮詢診所是否存在"""
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("諮詢診所不存在")
+        return value
 
 
 class CertificateVerificationSerializer(serializers.Serializer):

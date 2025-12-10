@@ -9,8 +9,7 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
-
-from users.enums import UserRole
+from users.enums import UserRole, InformationSource, OccupationCategory
 
 class User(AbstractUser):
     """
@@ -116,6 +115,23 @@ class User(AbstractUser):
         default=UserRole.CLIENT,
         help_text='User role for permission management'
     )
+
+    information_source = models.CharField(
+        max_length=20,
+        choices=InformationSource.CHOICES,
+        verbose_name=_('資訊來源'),
+        help_text=_('怎麼知道LBV認證活動資訊')
+    )
+    
+    # 職業類別（註冊時填寫）
+    occupation_category = models.CharField(
+        verbose_name=_('職業類別'),
+        max_length=20,
+        choices=OccupationCategory.CHOICES,
+        default=OccupationCategory.OTHER,
+        help_text=_('申請人的職業類別'),
+    )
+    
     # Add timestamp fields for auditing
     created_at = models.DateTimeField(
         verbose_name=_('建立日期'),

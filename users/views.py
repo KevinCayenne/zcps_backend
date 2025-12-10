@@ -197,8 +197,66 @@ class CustomUserViewSet(UserViewSet):
         }
     )
     def create(self, request, *args, **kwargs):
-        """Create a new user account."""
-        return super().create(request, *args, **kwargs)
+        """
+        Create a new user account and associated certificate application.
+        
+        在創建用戶的同時，如果提供了證書申請相關欄位，則創建 CertificateApplication。
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # 提取證書申請相關的欄位（這些欄位不會被保存到 User 模型）
+        # 注意：occupation_category 現在是 User 模型的欄位，不需要 pop
+        certificate_fields = {
+            'clinic_id': serializer.validated_data.pop('clinic_id', None),
+            'consultation_clinic_id': serializer.validated_data.pop('consultation_clinic_id', None),
+            'surgeon_name': serializer.validated_data.pop('surgeon_name', None),
+            'consultant_name': serializer.validated_data.pop('consultant_name', None),
+            'information_source': serializer.validated_data.pop('information_source', None),
+        }
+        
+        # 創建用戶（occupation_category 會自動保存到 User 模型）
+        user = serializer.save()
+        
+        # 如果提供了證書申請相關欄位，創建 CertificateApplication
+        if certificate_fields.get('clinic_id') and certificate_fields.get('information_source'):
+            from clinic.models import CertificateApplication, Clinic
+            from django.utils import timezone
+            from datetime import timedelta
+            import secrets
+            
+            try:
+                # 獲取診所
+                clinic = Clinic.objects.get(id=certificate_fields['clinic_id'])
+                consultation_clinic = None
+                
+                if certificate_fields.get('consultation_clinic_id'):
+                    consultation_clinic = Clinic.objects.get(id=certificate_fields['consultation_clinic_id'])
+                
+                # 生成驗證 token
+                verification_token = secrets.token_urlsafe(32)
+                token_expires_at = timezone.now() + timedelta(days=7)
+                
+                # 創建證書申請
+                CertificateApplication.objects.create(
+                    user=user,
+                    clinic=clinic,
+                    consultation_clinic=consultation_clinic,
+                    surgeon_name=certificate_fields.get('surgeon_name') or '',
+                    consultant_name=certificate_fields.get('consultant_name') or '',
+                    information_source=certificate_fields['information_source'],
+                    verification_token=verification_token,
+                    token_expires_at=token_expires_at,
+                    certificate_data={},  # 初始為空，後續可以更新
+                )
+            except Clinic.DoesNotExist:
+                # 如果診所不存在，記錄錯誤但不阻止用戶創建
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"診所不存在: clinic_id={certificate_fields.get('clinic_id')}")
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @extend_schema(
         tags=['User Management'],

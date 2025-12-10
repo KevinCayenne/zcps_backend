@@ -64,6 +64,8 @@ class UserSerializer(serializers.ModelSerializer):
             'last_2fa_verification',
             'preferred_2fa_method',
             'role',
+            'occupation_category',
+            'information_source',
             'is_active',
             'last_login',
             'date_joined',
@@ -202,6 +204,8 @@ class ClientUserSerializer(serializers.ModelSerializer):
             'phone_number_verified',
             'is_2fa_enabled',
             'twofa_setup_date',
+            'information_source',
+            'occupation_category',
             'last_2fa_verification',
             'preferred_2fa_method',
             'role',
@@ -230,7 +234,7 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
     """
     Serializer for user registration (create operation).
 
-    Extends Djoser's UserCreateSerializer to add phone_number field.
+    Extends Djoser's UserCreateSerializer to add phone_number field and certificate application fields.
     Ensures password is write-only and validates all fields.
     """
 
@@ -240,6 +244,48 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         allow_blank=True,
         help_text='Phone number in international format (e.g., +1 234 5678901)'
     )
+    
+    occupation_category = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=True,
+        help_text='申請人的職業類別'
+    )
+    # 證書申請相關欄位（註冊時填寫）
+    clinic_id = serializers.IntegerField(
+        required=True,
+        help_text='主要診所 ID'
+    )
+    consultation_clinic_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text='諮詢診所 ID（可選）'
+    )
+    surgeon_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text='手術醫師姓名（可選）'
+    )
+    consultant_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text='諮詢師姓名（可選）'
+    )
+    information_source = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=True,
+        help_text='怎麼知道LBV認證活動資訊'
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 動態設置 choices，避免循環導入
+        from users.enums import InformationSource, OccupationCategory
+        self.fields['occupation_category'].choices = OccupationCategory.CHOICES
+        self.fields['information_source'].choices = InformationSource.CHOICES
 
     class Meta(DjoserUserCreateSerializer.Meta):
         model = User
@@ -251,6 +297,12 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             'first_name',
             'last_name',
             'phone_number',
+            'occupation_category',
+            'clinic_id',
+            'consultation_clinic_id',
+            'surgeon_name',
+            'consultant_name',
+            'information_source',
         )
         extra_kwargs = {
             'password': {'write_only': True},
@@ -273,6 +325,20 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             # Basic validation: phone numbers should start with + for international format
             # This is a simple validation; you can add more complex regex validation if needed
             pass  # Allow any format for now as it's optional
+        return value
+    
+    def validate_clinic_id(self, value):
+        """驗證診所是否存在"""
+        from clinic.models import Clinic
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("診所不存在")
+        return value
+    
+    def validate_consultation_clinic_id(self, value):
+        """驗證諮詢診所是否存在"""
+        from clinic.models import Clinic
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("諮詢診所不存在")
         return value
 
 
