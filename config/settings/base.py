@@ -39,7 +39,8 @@ CLIENT_FRONTEND_URL = os.environ.get('CLIENT_FRONTEND_URL', 'http://localhost:30
 CERTIFICATE_API_BASE_URL = os.environ.get('CERTIFICATE_API_BASE_URL', 'https://tc-platform-service.turingcerts.com')
 CERTIFICATE_API_KEY = os.environ.get('CERTIFICATE_API_KEY', '')
 CERTIFICATE_TEMPLATE_ID = int(os.environ.get('CERTIFICATE_TEMPLATE_ID', '0')) if os.environ.get('CERTIFICATE_TEMPLATE_ID', '').strip() else None
-CERTIFICATE_PASSWORD = os.environ.get('CERTIFICATE_PASSWORD', '')
+CERTIFICATE_PASSWORD = os.environ.get('CERTIFICATE_PASSWORD')
+CERTIFICATE_GROUP_ID = int(os.environ.get('CERTIFICATE_GROUP_ID', '0')) if os.environ.get('CERTIFICATE_GROUP_ID', '').strip() else None
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

@@ -20,14 +20,17 @@ from users.certificate_views import (
 )
 from clinic.views import (
     ClinicViewSet,
+    PublicClinicViewSet,
     SubmitCertificateApplicationView,
     VerifyCertificateTokenView,
+    IssueCertificateView,
     DoctorViewSet,
-    ClinicUserPermissionViewSet
+    ClinicUserPermissionViewSet,
+    CertificateApplicationViewSet
 )
 from users.views import UserViewSet, ClientUserViewSet, ClientUserOuterViewSet
 from logs.views import ActionLogsViewSet
-from announcement.views import AnnouncementViewSet
+from announcement.views import AnnouncementViewSet, ClientAnnouncementViewSet
 from users.jwt_views import CustomTokenObtainPairView, CustomTokenRefreshView, CustomTokenVerifyView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from rest_framework import routers
@@ -39,10 +42,13 @@ router.register(r"users", UserViewSet, basename="users")
 router.register(r"clients", ClientUserViewSet, basename="clients")
 router.register(r"clients_outer", ClientUserOuterViewSet, basename="clients_outer")
 router.register(r"clinics", ClinicViewSet, basename="clinics")
+router.register(r"public-clinics", PublicClinicViewSet, basename="public-clinics")
 router.register(r"clinic-permissions", ClinicUserPermissionViewSet, basename="clinic-permissions")
+router.register(r"certificate-applications", CertificateApplicationViewSet, basename="certificate-applications")
 router.register(r"logs", ActionLogsViewSet, basename="action_logs")
 router.register(r"doctors", DoctorViewSet, basename="doctors")
 router.register(r"announcements", AnnouncementViewSet, basename="announcements")
+router.register(r"client-announcements", ClientAnnouncementViewSet, basename="client-announcements")
 
 urlpatterns = [
     path('api/', include(router.urls)),
@@ -89,6 +95,7 @@ urlpatterns = [
     # Certificate application endpoints
     path('api/certificates/submit-application/', SubmitCertificateApplicationView.as_view(), name='submit_certificate_application'),
     path('api/certificates/verify-token/', VerifyCertificateTokenView.as_view(), name='verify_certificate_token'),
+    path('api/certificates/issue/', IssueCertificateView.as_view(), name='issue_certificate'),
 ]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

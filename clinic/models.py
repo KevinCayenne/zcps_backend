@@ -282,6 +282,14 @@ class CertificateApplication(BaseModel):
         null=True,
         help_text=_('發證成功後返回的證書群組 ID')
     )
+    
+    certificate_hash = models.CharField(
+        max_length=255,
+        verbose_name=_('證書 Hash'),
+        blank=True,
+        null=True,
+        help_text=_('證書完成發證後返回的 hash 值')
+    )
 
     # 發證時間
     issued_at = models.DateTimeField(
@@ -345,15 +353,18 @@ class CertificateApplication(BaseModel):
         self.verified_at = timezone.now()
         self.save()
     
-    def mark_as_issued(self, certificate_group_id):
+    def mark_as_issued(self, certificate_group_id, certificate_hash=None):
         """
         標記為已發證
         
         Args:
             certificate_group_id: 證書群組 ID
+            certificate_hash: 證書 hash 值（可選）
         """
         self.status = CertificateApplicationStatus.ISSUED
         self.certificate_group_id = certificate_group_id
+        if certificate_hash:
+            self.certificate_hash = certificate_hash
         self.issued_at = timezone.now()
         self.save()
     

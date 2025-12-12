@@ -13,10 +13,12 @@ class CertificateApplicationStatus:
     VERIFIED = 'verified'
     ISSUED = 'issued'
     EXPIRED = 'expired'
+    CANCELLED = 'cancelled'
     
     CHOICES = [
         (PENDING, _('待驗證')),
         (VERIFIED, _('已驗證')),
         (ISSUED, _('已發證')),
         (EXPIRED, _('已過期')),
+        (CANCELLED, _('已取消')),
     ]

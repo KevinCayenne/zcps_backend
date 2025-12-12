@@ -1,24 +1,38 @@
 from rest_framework import viewsets, filters, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import (
     extend_schema, OpenApiResponse, OpenApiParameter
 )
-from users.permissions import IsAdminRolePermission
+from users.permissions import IsStaffRolePermission, IsAdminRolePermission
 from users.enums import UserRole
 from .models import Announcement
-from .serializers import AnnouncementSerializer
+from .serializers import AnnouncementSerializer, ClientAnnouncementSerializer
 from .filters import AnnouncementFilterSet
 from config.paginator import StandardResultsSetPagination
 from django.utils import timezone
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils.html import strip_tags
+from django.db.models import Q
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class IsClientRolePermission(BasePermission):
+    """
+    Permission to check if the user has CLIENT role (一般會員).
+    """
+    def has_permission(self, request, view):
+        return (
+            request.user and
+            request.user.is_authenticated and
+            hasattr(request.user, 'role') and
+            request.user.role == UserRole.CLIENT
+        )
 
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
@@ -40,7 +54,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     """
     queryset = Announcement.objects.all().order_by('-create_time')
     serializer_class = AnnouncementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRolePermission]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
@@ -307,3 +321,116 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         List all announcements.
         """
         return super().list(request, *args, **kwargs)
+
+
+class ClientAnnouncementViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for client users to view published announcements.
+    
+    Provides read-only operations for client users:
+    - List: GET /api/client-announcements/ (only published announcements)
+    - Retrieve: GET /api/client-announcements/{id}/ (only published announcements)
+    
+    **Permissions:**
+    - Only CLIENT role users can access
+    - Only shows announcements where is_active=True
+    - Only shows announcements within valid time range (active_start_time and active_end_time)
+    """
+    queryset = Announcement.objects.all().order_by('-create_time')
+    serializer_class = ClientAnnouncementSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+        filters.SearchFilter,
+    ]
+    ordering_fields = [
+        'title',
+        'create_time',
+        'active_start_time',
+    ]
+    ordering = ['-create_time']  # Default ordering: newest first
+    search_fields = ['title']  # Search by title
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        """
+        只返回已發布且在有效期內的公告。
+        """
+        now = timezone.now()
+        queryset = super().get_queryset()
+        
+        # 只返回已發布的公告
+        queryset = queryset.filter(is_active=True)
+        
+        # 檢查生效時間：如果設置了 active_start_time，必須小於等於現在
+        queryset = queryset.filter(
+            Q(active_start_time__isnull=True) | Q(active_start_time__lte=now)
+        )
+        
+        # 檢查失效時間：如果設置了 active_end_time，必須大於等於現在
+        queryset = queryset.filter(
+            Q(active_end_time__isnull=True) | Q(active_end_time__gte=now)
+        )
+        
+        return queryset
+    
+    @extend_schema(
+        tags=['Client Announcements'],
+        summary='List published announcements for clients',
+        description="""
+        獲取已發布的公告列表（僅供一般會員使用）。
+        
+        **權限要求：**
+        - 只有 CLIENT 角色的用戶可以訪問
+        
+        **返回內容：**
+        - 只返回 is_active=True 的公告
+        - 只返回在有效期內的公告（檢查 active_start_time 和 active_end_time）
+        
+        **查詢參數：**
+        - `search`: 搜尋關鍵字（可選，會搜尋標題）
+        - `ordering`: 排序欄位（可選，如：title, -create_time, active_start_time）
+        - `create_time__gte`: 創建時間起始（可選）
+        - `create_time__lte`: 創建時間結束（可選）
+        - `active_start_time__gte`: 生效時間起始（可選）
+        - `active_start_time__lte`: 生效時間結束（可選）
+        - `active_end_time__gte`: 失效時間起始（可選）
+        - `active_end_time__lte`: 失效時間結束（可選）
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='search',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='搜尋關鍵字（會搜尋標題）'
+            ),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        """
+        獲取已發布的公告列表（僅供一般會員使用）。
+        """
+        return super().list(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Client Announcements'],
+        summary='Retrieve published announcement for clients',
+        description="""
+        獲取已發布的公告詳細資訊（僅供一般會員使用）。
+        
+        **權限要求：**
+        - 只有 CLIENT 角色的用戶可以訪問
+        
+        **返回內容：**
+        - 只返回 is_active=True 的公告
+        - 只返回在有效期內的公告（檢查 active_start_time 和 active_end_time）
+        - 如果公告不存在或未發布，返回 404
+        """,
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """
+        獲取已發布的公告詳細資訊（僅供一般會員使用）。
+        """
+        return super().retrieve(request, *args, **kwargs)

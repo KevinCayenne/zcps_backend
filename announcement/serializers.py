@@ -31,3 +31,30 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             'active_end_time',
             'email_sent_at',  # Email 發送時間為只讀
         )
+
+
+class ClientAnnouncementSerializer(serializers.ModelSerializer):
+    """
+    一般會員專用的公告序列化器。
+    只包含一般會員需要看到的欄位，不包含管理相關的欄位。
+    """
+    class Meta:
+        model = Announcement
+        fields = (
+            'id',
+            'title',
+            'content',       # Lexical JSON 內容
+            'html_cache',    # HTML 快取
+            'active_start_time',
+            'active_end_time',
+            'create_time',
+        )
+        read_only_fields = (
+            'id',
+            'title',
+            'content',
+            'html_cache',
+            'active_start_time',
+            'active_end_time',
+            'create_time',
+        )

@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 API_BASE_URL = os.environ.get('API_BASE_URL', 'http://localhost:8000')
 API_KEY = os.environ.get('API_KEY', '42422ec94d248ec76e47e80b09780fd2b0479c14a79a6c3cebef8a7b14d8424e')
 TEMPLATE_ID = int(os.environ.get('TEMPLATE_ID', '7969'))
-ISSUANCE_SECRET_KEY = os.environ.get('ISSUANCE_SECRET_KEY', '1L+dRpp\\{DV,')  # 發證密鑰（從模板或配置中獲取）
+ISSUANCE_SECRET_KEY = os.environ.get('ISSUANCE_SECRET_KEY', '1L+dRpp\{DV,')  # 發證密鑰（從模板或配置中獲取）
 
 # 自動添加 http:// 前綴（如果缺少）
 if API_BASE_URL and not API_BASE_URL.startswith(('http://', 'https://')):
