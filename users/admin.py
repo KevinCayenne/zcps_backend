@@ -25,6 +25,7 @@ class UserAdmin(BaseUserAdmin):
         'first_name',
         'last_name',
         'phone_number',
+        'role',
         'is_2fa_enabled',
         'is_staff',
         'is_active',
@@ -33,6 +34,7 @@ class UserAdmin(BaseUserAdmin):
 
     # Fields to filter by in the list view
     list_filter = (
+        'role',
         'is_staff',
         'is_active',
         'is_superuser',
@@ -76,7 +78,7 @@ class UserAdmin(BaseUserAdmin):
             )
         }),
         ('Permissions', {
-            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
+            'fields': ('role', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
         }),
         ('Important dates', {
             'fields': ('last_login', 'date_joined', 'created_at', 'updated_at')

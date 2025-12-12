@@ -9,6 +9,7 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from users.enums import UserRole, InformationSource, OccupationCategory
 
 class User(AbstractUser):
     """
@@ -18,6 +19,7 @@ class User(AbstractUser):
     Includes created_at and updated_at timestamps for auditing.
     Supports Google OAuth with google_id and profile_picture_url fields.
     Supports email-based two-factor authentication with tracking fields.
+    Includes role-based permission system with role field.
     """
 
     # Override email to make it required and unique
@@ -36,6 +38,8 @@ class User(AbstractUser):
         max_length=17,
         blank=True,
         null=True,
+        unique=True,
+        db_index=True,
         help_text='Phone number in international format (e.g., +1 234 5678901)'
     )
 
@@ -67,7 +71,7 @@ class User(AbstractUser):
     # Two-Factor Authentication fields
     is_2fa_enabled = models.BooleanField(
         verbose_name=_('是否啟用兩步驟驗證'),
-        default=False,
+        default=True,
         help_text='Whether user has enabled two-factor authentication'
     )
 
@@ -93,9 +97,8 @@ class User(AbstractUser):
             ('EMAIL', 'Email'),
             ('PHONE', 'Phone'),
         ],
-        blank=True,
-        null=True,
-        help_text='User preferred 2FA method (null uses system default)'
+        default='EMAIL',
+        help_text='User preferred 2FA method (default is EMAIL)'
     )
 
     phone_number_verified = models.BooleanField(
@@ -104,6 +107,31 @@ class User(AbstractUser):
         help_text='Whether user phone number has been verified for 2FA'
     )
 
+    # Role/Permission fields
+    role = models.CharField(
+        verbose_name=_('權限角色'),
+        max_length=20,
+        choices=UserRole.choices,
+        default=UserRole.CLIENT,
+        help_text='User role for permission management'
+    )
+
+    information_source = models.CharField(
+        max_length=20,
+        choices=InformationSource.CHOICES,
+        verbose_name=_('資訊來源'),
+        help_text=_('怎麼知道LBV認證活動資訊')
+    )
+    
+    # 職業類別（註冊時填寫）
+    occupation_category = models.CharField(
+        verbose_name=_('職業類別'),
+        max_length=20,
+        choices=OccupationCategory.CHOICES,
+        default=OccupationCategory.OTHER,
+        help_text=_('申請人的職業類別'),
+    )
+    
     # Add timestamp fields for auditing
     created_at = models.DateTimeField(
         verbose_name=_('建立日期'),
@@ -115,8 +143,8 @@ class User(AbstractUser):
     )
 
     class Meta:
-        verbose_name = _('user')
-        verbose_name_plural = _('users')    
+        verbose_name = _('使用者')
+        verbose_name_plural = _('使用者')    
         ordering = ['-created_at']
 
     def __str__(self):

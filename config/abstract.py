@@ -1,7 +1,8 @@
 from django.db import models
+from django.conf import settings
 from datetime import datetime
 from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group
 
 
 class BaseModel(models.Model):
@@ -10,7 +11,7 @@ class BaseModel(models.Model):
     """
 
     create_user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         verbose_name="建立者",
         related_name="%(app_label)s_%(class)s_ownership",
         null=True,

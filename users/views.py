@@ -4,7 +4,7 @@ Views for user authentication and profile management.
 Provides custom views for logout functionality with token blacklisting,
 and custom password management views with JWT token blacklisting.
 """
-
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -16,6 +16,20 @@ from djoser.views import UserViewSet
 from django.conf import settings
 from .serializers import LogoutSerializer
 from .utils import blacklist_user_tokens
+from .models import User
+from .permissions import IsStaffRolePermission, IsAdminRolePermission
+from config.paginator import StandardResultsSetPagination
+from rest_framework import viewsets, filters
+from .serializers import UserSerializer, ClientUserSerializer
+from .filters import UserFilterSet
+from users.enums import UserRole
+
+# 導入診所相關模組
+try:
+    from clinic.models import ClinicUserPermission, Clinic
+except ImportError:
+    ClinicUserPermission = None
+    Clinic = None
 
 
 class LogoutView(APIView):
@@ -183,8 +197,66 @@ class CustomUserViewSet(UserViewSet):
         }
     )
     def create(self, request, *args, **kwargs):
-        """Create a new user account."""
-        return super().create(request, *args, **kwargs)
+        """
+        Create a new user account and associated certificate application.
+        
+        在創建用戶的同時，如果提供了證書申請相關欄位，則創建 CertificateApplication。
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # 提取證書申請相關的欄位（這些欄位不會被保存到 User 模型）
+        # 注意：occupation_category 現在是 User 模型的欄位，不需要 pop
+        certificate_fields = {
+            'clinic_id': serializer.validated_data.pop('clinic_id', None),
+            'consultation_clinic_id': serializer.validated_data.pop('consultation_clinic_id', None),
+            'surgeon_name': serializer.validated_data.pop('surgeon_name', None),
+            'consultant_name': serializer.validated_data.pop('consultant_name', None),
+            'information_source': serializer.validated_data.pop('information_source', None),
+        }
+        
+        # 創建用戶（occupation_category 會自動保存到 User 模型）
+        user = serializer.save()
+        
+        # 如果提供了證書申請相關欄位，創建 CertificateApplication
+        if certificate_fields.get('clinic_id') and certificate_fields.get('information_source'):
+            from clinic.models import CertificateApplication, Clinic
+            from django.utils import timezone
+            from datetime import timedelta
+            import secrets
+            
+            try:
+                # 獲取診所
+                clinic = Clinic.objects.get(id=certificate_fields['clinic_id'])
+                consultation_clinic = None
+                
+                if certificate_fields.get('consultation_clinic_id'):
+                    consultation_clinic = Clinic.objects.get(id=certificate_fields['consultation_clinic_id'])
+                
+                # 生成驗證 token
+                verification_token = secrets.token_urlsafe(32)
+                token_expires_at = timezone.now() + timedelta(days=7)
+                
+                # 創建證書申請
+                CertificateApplication.objects.create(
+                    user=user,
+                    clinic=clinic,
+                    consultation_clinic=consultation_clinic,
+                    surgeon_name=certificate_fields.get('surgeon_name') or '',
+                    consultant_name=certificate_fields.get('consultant_name') or '',
+                    information_source=certificate_fields['information_source'],
+                    verification_token=verification_token,
+                    token_expires_at=token_expires_at,
+                    certificate_data={},  # 初始為空，後續可以更新
+                )
+            except Clinic.DoesNotExist:
+                # 如果診所不存在，記錄錯誤但不阻止用戶創建
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"診所不存在: clinic_id={certificate_fields.get('clinic_id')}")
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @extend_schema(
         tags=['User Management'],
@@ -1007,3 +1079,242 @@ class CustomUserViewSet(UserViewSet):
             blacklist_user_tokens(request.user)
 
         return response
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.filter(role__in=[
+        UserRole.SUPER_ADMIN, 
+        UserRole.ADMIN, 
+        UserRole.CLINIC_ADMIN, 
+        UserRole.CLINIC_STAFF
+    ]).order_by("-date_joined")
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsAdminRolePermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    filterset_class = UserFilterSet
+    ordering_fields = [
+        "first_name",
+        "last_name",
+        "is_active",
+        "username",
+        "last_login",
+        "email",
+        "phone_number",
+        "role",
+        "created_at",
+        "updated_at",
+    ]
+    ordering = ["username"]
+    pagination_class = StandardResultsSetPagination
+
+    def create(self, request, *args, **kwargs):
+        """
+        創建用戶資料，並處理診所權限
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # 提取 clinic_ids（如果提供）
+        clinic_ids = serializer.validated_data.pop('clinic_ids', None)
+        
+        # 創建用戶
+        user = serializer.save()
+        
+        # 設置診所權限（如果提供了 clinic_ids）
+        if clinic_ids is not None:
+            self._update_clinic_permissions(user, clinic_ids)
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+
+    def _update_clinic_permissions(self, user, clinic_ids):
+        """
+        更新用戶的診所權限
+        
+        Args:
+            user: User 實例
+            clinic_ids: 診所 ID 列表
+        """
+        if ClinicUserPermission is None or Clinic is None:
+            return
+        
+        # 獲取當前用戶的診所權限
+        current_permissions = ClinicUserPermission.objects.filter(user=user)
+        current_clinic_ids = set(current_permissions.values_list('clinic_id', flat=True))
+        target_clinic_ids = set(clinic_ids) if clinic_ids else set()
+        
+        # 找出需要添加的診所
+        to_add = target_clinic_ids - current_clinic_ids
+        # 找出需要刪除的診所
+        to_remove = current_clinic_ids - target_clinic_ids
+        
+        # 添加新的權限
+        for clinic_id in to_add:
+            clinic = Clinic.objects.get(id=clinic_id)
+            # 檢查是否已存在（避免重複）
+            if not ClinicUserPermission.objects.filter(user=user, clinic=clinic).exists():
+                ClinicUserPermission.objects.create(
+                    user=user,
+                    clinic=clinic,
+                    create_user=self.request.user if self.request.user.is_authenticated else None
+                )
+        
+        # 刪除不需要的權限
+        if to_remove:
+            ClinicUserPermission.objects.filter(
+                user=user,
+                clinic_id__in=to_remove
+            ).delete()
+
+    def update(self, request, *args, **kwargs):
+        """
+        更新用戶資料，並處理診所權限
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        
+        # 提取 clinic_ids（如果提供）
+        clinic_ids = serializer.validated_data.pop('clinic_ids', None)
+        
+        # 更新用戶資料
+        self.perform_update(serializer)
+        
+        # 更新診所權限（如果提供了 clinic_ids）
+        if clinic_ids is not None:
+            self._update_clinic_permissions(instance, clinic_ids)
+        
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        部分更新用戶資料，並處理診所權限
+        """
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        無法刪除用戶資料。
+        """
+        return Response(
+            {"detail": "無法刪除用戶資料。"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+
+class ClientUserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.filter(role=UserRole.CLIENT).order_by("-date_joined")
+    serializer_class = ClientUserSerializer
+    permission_classes = [IsAuthenticated, IsAdminRolePermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    fields = (
+        "first_name",
+        "last_name",
+        "is_active",
+        "username",
+        "phone_number",
+        "is_2fa_enabled",
+        "preferred_2fa_method",
+        "last_login",
+        "email",
+        "role",
+        "created_at",
+        "updated_at",
+    )
+    filterset_fields = fields
+    ordering_fields = fields
+    ordering = ["username"]
+    pagination_class = StandardResultsSetPagination
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        無法刪除用戶資料。
+        """
+        return Response(
+            {"detail": "無法刪除用戶資料。"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+
+class ClientUserOuterViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.filter(role=UserRole.CLIENT).order_by("-date_joined")
+    serializer_class = ClientUserSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    fields = (
+        "first_name",
+        "last_name",
+        "is_active",
+        "username",
+        "phone_number",
+        "is_2fa_enabled",
+        "preferred_2fa_method",
+        "last_login",
+        "email",
+        "role",
+        "created_at",
+        "updated_at",
+    )
+    filterset_fields = fields
+    ordering_fields = fields
+    ordering = ["username"]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """
+        只返回當前用戶自己的資料（且 role 為 CLIENT）。
+        """
+        return User.objects.filter(
+            id=self.request.user.id
+        ).order_by("-date_joined")
+
+    def update(self, request, *args, **kwargs):
+        """
+        確保只能更新自己的資料。
+        """
+        instance = self.get_object()
+        if instance.id != request.user.id:
+            return Response(
+                {"detail": "您只能更新自己的資料。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        確保只能部分更新自己的資料。
+        """
+        instance = self.get_object()
+        if instance.id != request.user.id:
+            return Response(
+                {"detail": "您只能更新自己的資料。"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        無法刪除用戶資料。
+        """
+        return Response(
+            {"detail": "無法刪除用戶資料。"},
+            status=status.HTTP_403_FORBIDDEN
+        )

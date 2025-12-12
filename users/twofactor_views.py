@@ -281,6 +281,8 @@ def verify_setup_2fa(request):
     user.is_2fa_enabled = True
     user.twofa_setup_date = timezone.now()
     user.preferred_2fa_method = pending_method
+    # Automatically verify email since user successfully received and verified the code
+    user.email_verified = True
     user.save()
 
     # Clear session
@@ -399,7 +401,8 @@ def disable_2fa(request):
     # Disable 2FA
     user.is_2fa_enabled = False
     user.twofa_setup_date = None
-    user.preferred_2fa_method = None
+    # Note: preferred_2fa_method is not cleared as the field has NOT NULL constraint
+    # This preserves user preference if they re-enable 2FA later
     user.save()
 
     # Invalidate any unused codes

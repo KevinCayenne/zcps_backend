@@ -11,8 +11,178 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
+# 避免循環導入，在需要時才導入
+# 注意：不能導入 clinic.serializers，因為它會導入 UserSerializer，造成循環導入
+try:
+    from clinic.models import ClinicUserPermission, Clinic
+except ImportError:
+    ClinicUserPermission = None
+    Clinic = None
+
 
 class UserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for User model (read and write operations).
+
+    Used for displaying and creating user profile information.
+    Automatically generates unique username if not provided during creation.
+    """
+
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text='Username (optional, will be auto-generated from email if not provided)'
+    )
+    
+    # 診所權限相關欄位
+    clinic_permissions = serializers.SerializerMethodField(
+        read_only=True,
+        help_text='該用戶的診所權限列表（只讀）'
+    )
+    clinic_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+        help_text='診所 ID 列表（寫入時用於設置該用戶的診所權限）'
+    )
+
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'profile_picture_url',
+            'email_verified',
+            'phone_number_verified',
+            'is_2fa_enabled',
+            'twofa_setup_date',
+            'last_2fa_verification',
+            'preferred_2fa_method',
+            'role',
+            'occupation_category',
+            'information_source',
+            'is_active',
+            'last_login',
+            'date_joined',
+            'created_at',
+            'updated_at',
+            'clinic_permissions',
+            'clinic_ids',
+        )
+        read_only_fields = (
+            'id',
+            'username',
+            'password',
+            'created_at',
+            'updated_at',
+            'email_verified',
+            'phone_number_verified',
+            'twofa_setup_date',
+            'last_2fa_verification',
+            'last_login',
+            'date_joined',
+            'clinic_permissions',
+        )
+    
+    def get_clinic_permissions(self, obj):
+        """獲取該用戶的所有診所權限"""
+        if ClinicUserPermission is None:
+            return []
+        
+        permissions = ClinicUserPermission.objects.filter(user=obj).select_related('clinic')
+        
+        # 直接返回簡化版本，避免使用 ClinicUserPermissionSerializer
+        # 因為 ClinicUserPermissionSerializer 使用 UserSerializer，會造成循環引用
+        return [
+            {
+                'id': perm.id,
+                'clinic_id': perm.clinic.id,
+                'clinic_name': perm.clinic.name,
+                'clinic_number': perm.clinic.number if hasattr(perm.clinic, 'number') else None,
+                'create_time': perm.create_time,
+                'update_time': perm.update_time,
+            }
+            for perm in permissions
+        ]
+    
+    def validate_clinic_ids(self, value):
+        """驗證診所 ID 列表"""
+        if Clinic is None:
+            raise serializers.ValidationError("診所模組未可用")
+        
+        if not isinstance(value, list):
+            raise serializers.ValidationError("clinic_ids 必須是一個列表")
+        
+        # 驗證所有診所是否存在
+        clinic_ids = list(set(value))  # 去重
+        existing_clinics = Clinic.objects.filter(id__in=clinic_ids)
+        existing_ids = set(existing_clinics.values_list('id', flat=True))
+        missing_ids = set(clinic_ids) - existing_ids
+        
+        if missing_ids:
+            raise serializers.ValidationError(
+                f"以下診所 ID 不存在: {', '.join(map(str, missing_ids))}"
+            )
+        
+        return clinic_ids
+
+    def create(self, validated_data):
+        """
+        Create a new user instance.
+        
+        Automatically generates a unique username if not provided or empty.
+        Username is generated from email address.
+        """
+        import uuid
+        
+        # Get username from validated_data
+        username = validated_data.get('username', '').strip() if validated_data.get('username') else ''
+        
+        # If username is provided and already exists, raise validation error
+        if username and User.objects.filter(username=username).exists():
+            raise serializers.ValidationError({
+                'username': ['此使用者帳號已被使用。']
+            })
+
+        # If username is not provided or is empty, generate one from email
+        if not username:
+            email = validated_data.get('email', '')
+            if email:
+                # Generate username from email (part before @)
+                base_username = email.split('@')[0]
+                # Remove any non-alphanumeric characters except underscore
+                base_username = ''.join(c for c in base_username if c.isalnum() or c == '_')
+                # Ensure it's not empty
+                if not base_username:
+                    base_username = 'user'
+                
+                # Make it unique by appending a counter if needed
+                username = base_username
+                counter = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{base_username}_{counter}"
+                    counter += 1
+                    # Safety limit to prevent infinite loop
+                    if counter > 1000:
+                        username = f"{base_username}_{uuid.uuid4().hex[:8]}"
+                        break
+            else:
+                # Fallback if no email (shouldn't happen, but just in case)
+                username = f"user_{uuid.uuid4().hex[:8]}"
+        
+        # Set the username (generated or provided)
+        validated_data['username'] = username
+        
+        # Create the user
+        return super().create(validated_data)
+
+
+class ClientUserSerializer(serializers.ModelSerializer):
     """
     Serializer for User model (read operations).
 
@@ -29,16 +199,42 @@ class UserSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'phone_number',
+            'profile_picture_url',
+            'email_verified',
+            'phone_number_verified',
+            'is_2fa_enabled',
+            'twofa_setup_date',
+            'information_source',
+            'occupation_category',
+            'last_2fa_verification',
+            'preferred_2fa_method',
+            'role',
+            'is_active',
+            'last_login',
+            'date_joined',
             'created_at',
+            'updated_at',
         )
-        read_only_fields = ('id', 'created_at')
+        read_only_fields = (
+            'id', 
+            'created_at',
+            'updated_at',
+            'username',
+            'email_verified',
+            'phone_number_verified',
+            'twofa_setup_date',
+            'last_2fa_verification',
+            'role',
+            'last_login',
+            'date_joined',
+        )
 
 
 class UserCreateSerializer(DjoserUserCreateSerializer):
     """
     Serializer for user registration (create operation).
 
-    Extends Djoser's UserCreateSerializer to add phone_number field.
+    Extends Djoser's UserCreateSerializer to add phone_number field and certificate application fields.
     Ensures password is write-only and validates all fields.
     """
 
@@ -48,6 +244,48 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         allow_blank=True,
         help_text='Phone number in international format (e.g., +1 234 5678901)'
     )
+    
+    occupation_category = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=True,
+        help_text='申請人的職業類別'
+    )
+    # 證書申請相關欄位（註冊時填寫）
+    clinic_id = serializers.IntegerField(
+        required=True,
+        help_text='主要診所 ID'
+    )
+    consultation_clinic_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text='諮詢診所 ID（可選）'
+    )
+    surgeon_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text='手術醫師姓名（可選）'
+    )
+    consultant_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text='諮詢師姓名（可選）'
+    )
+    information_source = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=True,
+        help_text='怎麼知道LBV認證活動資訊'
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 動態設置 choices，避免循環導入
+        from users.enums import InformationSource, OccupationCategory
+        self.fields['occupation_category'].choices = OccupationCategory.CHOICES
+        self.fields['information_source'].choices = InformationSource.CHOICES
 
     class Meta(DjoserUserCreateSerializer.Meta):
         model = User
@@ -59,6 +297,12 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             'first_name',
             'last_name',
             'phone_number',
+            'occupation_category',
+            'clinic_id',
+            'consultation_clinic_id',
+            'surgeon_name',
+            'consultant_name',
+            'information_source',
         )
         extra_kwargs = {
             'password': {'write_only': True},
@@ -81,6 +325,20 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             # Basic validation: phone numbers should start with + for international format
             # This is a simple validation; you can add more complex regex validation if needed
             pass  # Allow any format for now as it's optional
+        return value
+    
+    def validate_clinic_id(self, value):
+        """驗證診所是否存在"""
+        from clinic.models import Clinic
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("診所不存在")
+        return value
+    
+    def validate_consultation_clinic_id(self, value):
+        """驗證諮詢診所是否存在"""
+        from clinic.models import Clinic
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("諮詢診所不存在")
         return value
 
 

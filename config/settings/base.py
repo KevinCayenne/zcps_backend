@@ -31,6 +31,17 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 
+# Frontend URL for constructing password reset and email verification links
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+CLIENT_FRONTEND_URL = os.environ.get('CLIENT_FRONTEND_URL', 'http://localhost:3001')
+
+# Certificate API Configuration
+CERTIFICATE_API_BASE_URL = os.environ.get('CERTIFICATE_API_BASE_URL', 'https://tc-platform-service.turingcerts.com')
+CERTIFICATE_API_KEY = os.environ.get('CERTIFICATE_API_KEY', '')
+CERTIFICATE_TEMPLATE_ID = int(os.environ.get('CERTIFICATE_TEMPLATE_ID', '0')) if os.environ.get('CERTIFICATE_TEMPLATE_ID', '').strip() else None
+CERTIFICATE_PASSWORD = os.environ.get('CERTIFICATE_PASSWORD')
+CERTIFICATE_GROUP_ID = int(os.environ.get('CERTIFICATE_GROUP_ID', '0')) if os.environ.get('CERTIFICATE_GROUP_ID', '').strip() else None
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -56,6 +67,7 @@ INSTALLED_APPS = [
     'djoser',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'django_filters',
 
     # Allauth packages (must come before dj_rest_auth)
     'allauth',
@@ -72,6 +84,9 @@ INSTALLED_APPS = [
 
     # Local apps
     'users',
+    'clinic',
+    'logs',
+    'announcement',
 ]
 
 MIDDLEWARE = [
@@ -79,11 +94,11 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # CORS middleware (must be before CommonMiddleware)
     'django.contrib.sessions.middleware.SessionMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # WhiteNoise middleware (must be before CommonMiddleware)    
-    'users.middleware.AdminLanguageMiddleware',  # 強制 Admin 使用繁體中文 (必須在 LocaleMiddleware 之前)
     'django.middleware.locale.LocaleMiddleware',  # 國際化中間件 (必須在 SessionMiddleware 之後，CommonMiddleware 之前)
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'logs.middleware.CurrentUserMiddleware',  # Store current user for action logging
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'drf_api_logger.middleware.api_logger_middleware.APILoggerMiddleware',
@@ -158,9 +173,6 @@ AUTH_PASSWORD_VALIDATORS = [
 # Password Management Configuration
 # Password reset token expiration time in seconds (24 hours)
 PASSWORD_RESET_TIMEOUT = 86400
-
-# Frontend URL for constructing password reset and email verification links
-FRONTEND_URL = 'http://localhost:3000'
 
 # JWT token blacklisting on password change
 # When True, all JWT tokens are blacklisted when user changes password
@@ -281,7 +293,7 @@ DJOSER = {
     'SEND_CONFIRMATION_EMAIL': False,
     'PASSWORD_CHANGED_EMAIL_CONFIRMATION': True,
     'ACTIVATION_URL': 'activate/{uid}/{token}',
-    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/confirm/{uid}/{token}',
+    'PASSWORD_RESET_CONFIRM_URL': 'reset-password/{uid}/{token}',
     'USERNAME_RESET_CONFIRM_URL': 'username/reset/confirm/{uid}/{token}',
     'USER_CREATE_PASSWORD_RETYPE': False,
     'SET_PASSWORD_RETYPE': False,

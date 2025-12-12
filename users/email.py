@@ -26,7 +26,7 @@ def parse_frontend_url():
         - 'localhost:3000' -> ('http', 'localhost:3000')
         - 'example.com' -> ('https', 'example.com')
     """
-    frontend_url = settings.FRONTEND_URL
+    frontend_url = settings.CLIENT_FRONTEND_URL
 
     if frontend_url.startswith('http://'):
         return 'http', frontend_url.replace('http://', '')
@@ -97,7 +97,7 @@ class PasswordResetEmail(email.PasswordResetEmail):
         context['domain'] = domain
 
         # Reconstruct URL using FRONTEND_URL
-        reset_url = settings.DJOSER.get('PASSWORD_RESET_CONFIRM_URL', 'password/reset/confirm/{uid}/{token}')
+        reset_url = settings.DJOSER.get('PASSWORD_RESET_CONFIRM_URL', 'reset-password/{uid}/{token}')
         context['url'] = reset_url.format(uid=uid, token=token)
 
         return context
