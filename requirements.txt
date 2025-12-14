@@ -28,7 +28,3 @@ drf_api_logger==1.1.21
 
 # WhiteNoise packages
 whitenoise==6.11.0
-
-# Development and Testing
-pytest==9.0.1
-pytest-django==4.11.1
