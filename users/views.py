@@ -211,6 +211,7 @@ class CustomUserViewSet(UserViewSet):
             'clinic_id': serializer.validated_data.pop('clinic_id', None),
             'consultation_clinic_id': serializer.validated_data.pop('consultation_clinic_id', None),
             'surgeon_name': serializer.validated_data.pop('surgeon_name', None),
+            'surgery_date': serializer.validated_data.pop('surgery_date', None),
             'consultant_name': serializer.validated_data.pop('consultant_name', None),
             'information_source': serializer.validated_data.pop('information_source', None),
         }
@@ -243,6 +244,7 @@ class CustomUserViewSet(UserViewSet):
                     clinic=clinic,
                     consultation_clinic=consultation_clinic,
                     surgeon_name=certificate_fields.get('surgeon_name') or '',
+                    surgery_date=certificate_fields.get('surgery_date'),
                     consultant_name=certificate_fields.get('consultant_name') or '',
                     information_source=certificate_fields['information_source'],
                     verification_token=verification_token,

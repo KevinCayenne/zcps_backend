@@ -65,7 +65,9 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
             'consultation_clinic',
             'consultation_clinic_id',
             'surgeon_name',
+            'surgery_date',
             'consultant_name',
+            'certificate_number',
             'applicant_name',
             'applicant_email',
             'applicant_phone',
@@ -87,6 +89,7 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
             'user_username',
             # 注意：applicant_name, applicant_email, applicant_phone 是 SerializerMethodField，
             # 它們本身就是只讀的，不需要在 read_only_fields 中
+            'certificate_number',  # 認證序號由系統自動生成，只讀
             'verification_token',
             'token_expires_at',
             'verified_at',

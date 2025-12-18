@@ -34,6 +34,13 @@ class UserSerializer(serializers.ModelSerializer):
         help_text='Username (optional, will be auto-generated from email if not provided)'
     )
     
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        help_text='Password (write-only, required for user creation)'
+    )
+    
     # 診所權限相關欄位
     clinic_permissions = serializers.SerializerMethodField(
         read_only=True,
@@ -53,6 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id',
             'username',
             'email',
+            'password',
             'first_name',
             'last_name',
             'phone_number',
@@ -72,12 +80,12 @@ class UserSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'clinic_permissions',
+            'cert_record_group_id',
             'clinic_ids',
         )
         read_only_fields = (
             'id',
             'username',
-            'password',
             'created_at',
             'updated_at',
             'email_verified',
@@ -87,6 +95,7 @@ class UserSerializer(serializers.ModelSerializer):
             'last_login',
             'date_joined',
             'clinic_permissions',
+            'cert_record_group_id',
         )
     
     def get_clinic_permissions(self, obj):
@@ -178,8 +187,18 @@ class UserSerializer(serializers.ModelSerializer):
         # Set the username (generated or provided)
         validated_data['username'] = username
         
+        # Extract password from validated_data if provided
+        password = validated_data.pop('password', None)
+        
         # Create the user
-        return super().create(validated_data)
+        user = super().create(validated_data)
+        
+        # Set password if provided (using set_password to properly hash it)
+        if password:
+            user.set_password(password)
+            user.save(update_fields=['password'])
+        
+        return user
 
 
 class ClientUserSerializer(serializers.ModelSerializer):
@@ -214,6 +233,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             'date_joined',
             'created_at',
             'updated_at',
+            'cert_record_group_id',
         )
         read_only_fields = (
             'id', 
@@ -227,6 +247,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             'role',
             'last_login',
             'date_joined',
+            'cert_record_group_id',
         )
 
 
@@ -267,6 +288,11 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         allow_null=True,
         help_text='手術醫師姓名（可選）'
     )
+    surgery_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text='手術執行日期（可選）'
+    )
     consultant_name = serializers.CharField(
         max_length=255,
         required=False,
@@ -301,8 +327,10 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             'clinic_id',
             'consultation_clinic_id',
             'surgeon_name',
+            'surgery_date',
             'consultant_name',
             'information_source',
+            'cert_record_group_id',
         )
         extra_kwargs = {
             'password': {'write_only': True},

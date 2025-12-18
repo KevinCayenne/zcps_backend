@@ -234,12 +234,28 @@ class CertificateApplication(BaseModel):
         help_text=_('手術醫師姓名')
     )
     
+    surgery_date = models.DateField(
+        verbose_name=_('手術執行日期'),
+        blank=True,
+        null=True,
+        help_text=_('手術執行日期')
+    )
+    
     consultant_name = models.CharField(
         max_length=255,
         verbose_name=_('諮詢師'),
         blank=True,
         null=True,
         help_text=_('諮詢師姓名')
+    )
+    
+    certificate_number = models.CharField(
+        max_length=100,
+        verbose_name=_('認證序號'),
+        blank=True,
+        null=True,
+        unique=True,
+        help_text=_('證書認證序號（系統自動生成）')
     )
     
     # 證書資料（JSON 格式存儲）
@@ -310,6 +326,34 @@ class CertificateApplication(BaseModel):
             models.Index(fields=['clinic']),
             models.Index(fields=['user', 'clinic']),  # 複合索引，用於查詢用戶在某診所的證書
         ]
+    
+    def generate_certificate_number(self):
+        """
+        生成唯一的認證序號（Certificate No.）
+        
+        格式：CERT-YYYYMMDD-XXXXXX
+        其中 YYYYMMDD 是日期，XXXXXX 是 6 位隨機數字
+        
+        Returns:
+            str: 生成的認證序號
+        """
+        import random
+        
+        # 生成日期部分（YYYYMMDD）
+        date_str = timezone.now().strftime('%Y%m%d')
+        
+        # 生成 6 位隨機數字
+        random_part = f"{random.randint(100000, 999999)}"
+        
+        # 組合認證序號
+        cert_number = f"CERT-{date_str}-{random_part}"
+        
+        # 確保唯一性（如果已存在，重新生成）
+        while CertificateApplication.objects.filter(certificate_number=cert_number).exists():
+            random_part = f"{random.randint(100000, 999999)}"
+            cert_number = f"CERT-{date_str}-{random_part}"
+        
+        return cert_number
     
     def generate_verification_token(self):
         """
