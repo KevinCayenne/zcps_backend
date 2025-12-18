@@ -141,6 +141,13 @@ class User(AbstractUser):
         verbose_name=_('更新日期'),
         auto_now=True
     )
+    cert_record_group_id = models.IntegerField(
+        verbose_name=_('證書群組 ID'),
+        blank=True,
+        null=True,
+        help_text=_('證書群組 ID'),
+        db_index=True,
+    )
 
     class Meta:
         verbose_name = _('使用者')

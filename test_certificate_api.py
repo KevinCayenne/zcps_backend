@@ -127,12 +127,13 @@ def get_template(template_id: int, api_key: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def build_certs_data(template_data: Dict[str, Any]) -> list:
+def build_certs_data(template_data: Dict[str, Any], certificate_application=None) -> list:
     """
-    根據模板資訊構建 certsData
+    根據模板資訊構建 certsData，自動帶入會員資料、就診醫院、醫師、日期和認證序號
     
     Args:
         template_data: 模板資訊
+        certificate_application: CertificateApplication 實例（可選，如果提供則自動帶入相關資料）
         
     Returns:
         certsData 列表
@@ -144,6 +145,40 @@ def build_certs_data(template_data: Dict[str, Any]) -> list:
         'email': 'example@example.com'  # email 是必填欄位
     }
     
+    # 如果提供了 certificate_application，自動帶入相關資料
+    if certificate_application:
+        user = certificate_application.user
+        clinic = certificate_application.clinic
+        
+        # 自動帶入會員姓名（組合 first_name 和 last_name）
+        member_name = ""
+        if user.first_name or user.last_name:
+            member_name = f"{user.first_name or ''}{user.last_name or ''}".strip()
+        elif user.username:
+            member_name = user.username
+        else:
+            member_name = user.email.split('@')[0] if user.email else "會員"
+        
+        # 自動帶入就診醫院
+        hospital_name = clinic.name if clinic else ""
+        
+        # 自動帶入手術執行醫師
+        surgeon_name = certificate_application.surgeon_name or ""
+        
+        # 自動帶入手術執行日期
+        surgery_date = ""
+        if certificate_application.surgery_date:
+            surgery_date = certificate_application.surgery_date.strftime('%Y-%m-%d')
+        
+        # 生成或獲取認證序號
+        if not certificate_application.certificate_number:
+            certificate_application.certificate_number = certificate_application.generate_certificate_number()
+            certificate_application.save(update_fields=['certificate_number'])
+        cert_number = certificate_application.certificate_number
+        
+        # 設置 email
+        cert_data['email'] = user.email or 'example@example.com'
+    
     # 根據模板的 keyList 填入對應的資料
     for key_item in key_list:
         key = key_item.get('key')
@@ -154,25 +189,47 @@ def build_certs_data(template_data: Dict[str, Any]) -> list:
         if not key or not key.startswith('tx-'):
             continue  # 跳過非 tx- 開頭的欄位
         
-        # 根據類型設置示例值
-        if 'string' in key_type or 'text' in key_type:
-            # 根據描述判斷欄位類型
+        # 如果提供了 certificate_application，根據描述自動匹配欄位
+        if certificate_application:
+            # 根據描述判斷欄位類型並自動帶入
             if '姓名' in description or 'name' in description.lower():
-                cert_data[key] = "張三"
-            elif '日期' in description or 'date' in description.lower():
-                cert_data[key] = "2025-12-01"
+                cert_data[key] = member_name
+            elif '醫院' in description or 'hospital' in description.lower() or '就診' in description:
+                cert_data[key] = hospital_name
+            elif '醫師' in description or 'doctor' in description.lower() or '執行' in description:
+                cert_data[key] = surgeon_name
+            elif '日期' in description or 'date' in description.lower() or '執行日期' in description:
+                cert_data[key] = surgery_date if surgery_date else "2025-12-01"
+            elif '序號' in description or 'number' in description.lower() or 'certificate no' in description.lower() or '認證' in description:
+                cert_data[key] = cert_number
             elif '獎狀' in description or 'certificate' in description.lower():
                 cert_data[key] = "示例獎狀"
             else:
-                cert_data[key] = f"示例{key}"
-        elif 'number' in key_type or 'integer' in key_type:
-            cert_data[key] = 123
-        elif 'date' in key_type:
-            cert_data[key] = "2025-12-01"
-        elif 'email' in key_type:
-            cert_data[key] = "example@example.com"
+                # 如果用戶在 certificate_data 中提供了該欄位的值，使用用戶的值
+                if certificate_application.certificate_data and key in certificate_application.certificate_data:
+                    cert_data[key] = certificate_application.certificate_data[key]
+                else:
+                    cert_data[key] = f"示例{key}"
         else:
-            cert_data[key] = f"示例值_{key}"
+            # 沒有提供 certificate_application，使用示例值
+            if 'string' in key_type or 'text' in key_type:
+                # 根據描述判斷欄位類型
+                if '姓名' in description or 'name' in description.lower():
+                    cert_data[key] = "張三"
+                elif '日期' in description or 'date' in description.lower():
+                    cert_data[key] = "2025-12-01"
+                elif '獎狀' in description or 'certificate' in description.lower():
+                    cert_data[key] = "示例獎狀"
+                else:
+                    cert_data[key] = f"示例{key}"
+            elif 'number' in key_type or 'integer' in key_type:
+                cert_data[key] = 123
+            elif 'date' in key_type:
+                cert_data[key] = "2025-12-01"
+            elif 'email' in key_type:
+                cert_data[key] = "example@example.com"
+            else:
+                cert_data[key] = f"示例值_{key}"
     
     return [cert_data]
 
@@ -220,7 +277,7 @@ def issue_certificates_to_new_group(
         'certsData': certs_data,
         'isDownloadButtonEnabled': True,
         'skipSendingNotification': False,
-        'setVisibilityPublic': False,
+        'setVisibilityPublic': True,
         'certPassword': ISSUANCE_SECRET_KEY if ISSUANCE_SECRET_KEY else '',  # 發證密鑰
         'certRecordRemark': '測試發證',
         'pdfProtectionPassword': '',
@@ -305,7 +362,7 @@ def issue_certificates_to_existing_group(
         'certsData': certs_data,
         'isDownloadButtonEnabled': True,
         'skipSendingNotification': False,
-        'setVisibilityPublic': False,
+        'setVisibilityPublic': True,
         'certPassword': ISSUANCE_SECRET_KEY if ISSUANCE_SECRET_KEY else '',  # 發證密鑰
         'certRecordRemark': '測試發證到現有群組',
         'pdfProtectionPassword': '',

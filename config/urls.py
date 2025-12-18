@@ -24,6 +24,8 @@ from clinic.views import (
     SubmitCertificateApplicationView,
     VerifyCertificateTokenView,
     IssueCertificateView,
+    GetCertificateView,
+    GetCertificatePdfView,
     DoctorViewSet,
     ClinicUserPermissionViewSet,
     CertificateApplicationViewSet
@@ -96,6 +98,10 @@ urlpatterns = [
     path('api/certificates/submit-application/', SubmitCertificateApplicationView.as_view(), name='submit_certificate_application'),
     path('api/certificates/verify-token/', VerifyCertificateTokenView.as_view(), name='verify_certificate_token'),
     path('api/certificates/issue/', IssueCertificateView.as_view(), name='issue_certificate'),
+    
+    # Certificate retrieval endpoints
+    path('api/certificates/get-certificate/', GetCertificateView.as_view(), name='get_certificate'),
+    path('api/certificates/get-pdf/', GetCertificatePdfView.as_view(), name='get_certificate_pdf'),
 ]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
