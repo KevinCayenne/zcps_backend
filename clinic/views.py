@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils.html import strip_tags
 from rest_framework import status, serializers, viewsets, filters
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
@@ -171,7 +171,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Clinic.objects.all().order_by('-create_time')
     serializer_class = ClinicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
@@ -1760,7 +1760,7 @@ class IssueCertificateView(APIView):
         - `name`: 證書群組名稱（僅在創建新群組時使用，默認：證書群組_{templateId}）
         - `certificateData`: 證書資料（如果未提供，將使用申請時提交的資料）
         - `isDownloadButtonEnabled`: 是否啟用下載按鈕（默認：true）
-        - `skipSendingNotification`: 跳過發送通知（默認：false）
+        - `skipSendingNotification`: 跳過發送通知（默認：True）
         - `setVisibilityPublic`: 設定為公開（默認：True）
         - `certRecordRemark`: 證書備註
         - `pdfProtectionPassword`: PDF 保護密碼
@@ -1804,7 +1804,7 @@ class IssueCertificateView(APIView):
                     "application_id": 1,
                     "name": "證書群組名稱",
                     "isDownloadButtonEnabled": True,
-                    "skipSendingNotification": False,
+                    "skipSendingNotification": True,
                     "setVisibilityPublic": True,
                     "certificateData": {
                         "email": "member@example.com",
@@ -1985,7 +1985,7 @@ class IssueCertificateView(APIView):
             'certsData': certs_data,
             'certPassword': cert_password,
             'isDownloadButtonEnabled': request.data.get('isDownloadButtonEnabled', True),
-            'skipSendingNotification': request.data.get('skipSendingNotification', False),
+            'skipSendingNotification': request.data.get('skipSendingNotification', True),
             'setVisibilityPublic': request.data.get('setVisibilityPublic', True),
             'certRecordRemark': request.data.get('certRecordRemark', ''),
             'pdfProtectionPassword': request.data.get('pdfProtectionPassword', ''),

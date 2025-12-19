@@ -11,12 +11,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, inline_serializer
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, OpenApiParameter, inline_serializer
 from djoser.views import UserViewSet
 from django.conf import settings
 from .serializers import LogoutSerializer
 from .utils import blacklist_user_tokens
-from .models import User
+from .models import User, EmailVerificationOTP
 from .permissions import IsStaffRolePermission, IsAdminRolePermission
 from config.paginator import StandardResultsSetPagination
 from rest_framework import viewsets, filters
@@ -30,6 +30,486 @@ try:
 except ImportError:
     ClinicUserPermission = None
     Clinic = None
+
+
+class SendRegistrationOTPView(APIView):
+    """
+    API endpoint to send OTP for email verification before registration.
+    
+    POST /auth/users/send-registration-otp/
+    This endpoint sends a 6-digit OTP to the provided email address.
+    """
+    
+    permission_classes = []  # 公開訪問，不需要認證
+    
+    @extend_schema(
+        tags=['User Management'],
+        summary='Send registration OTP (Public)',
+        description="""
+        發送註冊用的 OTP 驗證碼到指定的 email。
+        
+        **流程說明：**
+        1. 用戶輸入 email
+        2. 調用此 API 發送 OTP
+        3. 系統發送 6 位數驗證碼到 email
+        4. 用戶收到驗證碼後，調用驗證 API 確認 email
+        
+        **使用場景：**
+        - 註冊頁面，用戶輸入 email 後點擊「發送驗證碼」
+        - 確保 email 地址有效且用戶可以接收郵件
+        - 防止使用無效或他人的 email 註冊
+        
+        **重要事項：**
+        - OTP 有效期為 10 分鐘（可配置）
+        - 每個 email 最多只能有 1 個未使用的 OTP
+        - 如果發送新的 OTP，舊的會被標記為已使用
+        - 驗證失敗超過 5 次需重新發送
+        
+        **安全考量：**
+        - 即使 email 不存在，也返回成功（防止 email 枚舉攻擊）
+        - 有發送頻率限制（建議前端實現防抖）
+        """,
+        request=inline_serializer(
+            name='SendRegistrationOTPRequest',
+            fields={
+                'email': serializers.EmailField(help_text='要驗證的 email 地址'),
+            }
+        ),
+        examples=[
+            OpenApiExample(
+                'Send OTP Request',
+                value={'email': 'user@example.com'},
+                request_only=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='OTP 已發送（即使 email 不存在也返回成功，防止枚舉攻擊）',
+                response=inline_serializer(
+                    name='SendRegistrationOTPSuccessResponse',
+                    fields={
+                        'message': serializers.CharField(help_text='成功訊息'),
+                        'expires_at': serializers.DateTimeField(help_text='OTP 過期時間'),
+                    }
+                )
+            ),
+            400: OpenApiResponse(
+                description='Bad Request - email 格式無效',
+                response=inline_serializer(
+                    name='SendRegistrationOTPErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息'),
+                    }
+                )
+            ),
+            429: OpenApiResponse(
+                description='Too Many Requests - 發送頻率過高',
+                response=inline_serializer(
+                    name='SendRegistrationOTPRateLimitResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息'),
+                    }
+                )
+            ),
+        }
+    )
+    def post(self, request):
+        """
+        發送註冊用的 OTP 驗證碼
+        """
+        email = request.data.get('email', '').strip()
+        
+        if not email:
+            return Response(
+                {'error': 'email 參數是必填的'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 驗證 email 格式
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response(
+                {'error': 'email 格式無效'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 檢查 email 是否已被使用（如果已註冊，不需要發送 OTP）
+        if User.objects.filter(email__iexact=email).exists():
+            # 即使 email 已被使用，也返回成功（防止枚舉攻擊）
+            # 但在驗證 OTP 時會檢查
+            return Response(
+                {
+                    'message': '如果此 email 尚未註冊，驗證碼已發送到您的 email',
+                    'expires_at': None
+                },
+                status=status.HTTP_200_OK
+            )
+        
+        # 檢查發送頻率（防止濫用）
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        recent_otp = EmailVerificationOTP.objects.filter(
+            email__iexact=email,
+            created_at__gte=timezone.now() - timedelta(minutes=1)
+        ).first()
+        
+        if recent_otp:
+            return Response(
+                {'error': '請稍候再試，發送頻率過高'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+        
+        # 生成 6 位數驗證碼
+        import secrets
+        code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+        
+        # 設置過期時間（10 分鐘）
+        expires_at = timezone.now() + timedelta(minutes=10)
+        
+        # 將舊的未使用 OTP 標記為已使用
+        EmailVerificationOTP.objects.filter(
+            email__iexact=email,
+            is_used=False
+        ).update(is_used=True)
+        
+        # 創建新的 OTP
+        otp = EmailVerificationOTP.objects.create(
+            email=email,
+            code=code,
+            expires_at=expires_at
+        )
+        
+        # 發送 OTP 到 email
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            
+            subject = '您的註冊驗證碼'
+            message = f"""親愛的用戶，
+
+您的註冊驗證碼是：
+
+{code}
+
+此驗證碼將在 10 分鐘後過期。
+
+如果您沒有申請註冊，請忽略此郵件。
+
+謝謝！
+"""
+            
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to send OTP email to {email}: {e}")
+            # 即使發送失敗，也返回成功（防止枚舉攻擊）
+        
+        return Response(
+            {
+                'message': '驗證碼已發送到您的 email',
+                'expires_at': expires_at
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class VerifyRegistrationOTPView(APIView):
+    """
+    API endpoint to verify OTP for email verification before registration.
+    
+    POST /auth/users/verify-registration-otp/
+    This endpoint verifies the OTP code sent to the email.
+    """
+    
+    permission_classes = []  # 公開訪問，不需要認證
+    
+    @extend_schema(
+        tags=['User Management'],
+        summary='Verify registration OTP (Public)',
+        description="""
+        驗證註冊用的 OTP 驗證碼。
+        
+        **流程說明：**
+        1. 用戶收到 OTP 驗證碼
+        2. 輸入驗證碼並調用此 API
+        3. 系統驗證 OTP 是否正確
+        4. 驗證成功後，可以進行註冊
+        
+        **驗證規則：**
+        - OTP 必須在 10 分鐘內使用
+        - OTP 只能使用一次
+        - 驗證失敗超過 5 次需重新發送
+        - email 必須尚未註冊
+        
+        **返回結果：**
+        - `verified`: true 表示驗證成功
+        - `verified`: false 表示驗證失敗
+        - `token`: 驗證成功後返回的臨時 token（可選，用於後續註冊時驗證）
+        
+        **使用場景：**
+        - 註冊頁面，用戶輸入 OTP 後點擊「驗證」
+        - 驗證成功後，允許用戶繼續註冊流程
+        """,
+        request=inline_serializer(
+            name='VerifyRegistrationOTPRequest',
+            fields={
+                'email': serializers.EmailField(help_text='要驗證的 email 地址'),
+                'code': serializers.CharField(help_text='6 位數驗證碼'),
+            }
+        ),
+        examples=[
+            OpenApiExample(
+                'Verify OTP Request',
+                value={
+                    'email': 'user@example.com',
+                    'code': '123456'
+                },
+                request_only=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='OTP 驗證結果',
+                response=inline_serializer(
+                    name='VerifyRegistrationOTPSuccessResponse',
+                    fields={
+                        'verified': serializers.BooleanField(help_text='是否驗證成功'),
+                        'message': serializers.CharField(help_text='狀態訊息'),
+                        'token': serializers.CharField(required=False, help_text='驗證成功後的臨時 token（可選）'),
+                    }
+                )
+            ),
+            400: OpenApiResponse(
+                description='Bad Request - 參數錯誤或驗證失敗',
+                response=inline_serializer(
+                    name='VerifyRegistrationOTPErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息'),
+                    }
+                )
+            ),
+        }
+    )
+    def post(self, request):
+        """
+        驗證註冊用的 OTP 驗證碼
+        """
+        email = request.data.get('email', '').strip()
+        code = request.data.get('code', '').strip()
+        
+        if not email or not code:
+            return Response(
+                {'error': 'email 和 code 參數都是必填的'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 驗證 email 格式
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response(
+                {'error': 'email 格式無效'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 檢查 email 是否已被註冊
+        if User.objects.filter(email__iexact=email).exists():
+            return Response(
+                {
+                    'verified': False,
+                    'error': '此 email 已被註冊'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 查找最新的未使用 OTP
+        otp = EmailVerificationOTP.objects.filter(
+            email__iexact=email,
+            is_used=False
+        ).order_by('-created_at').first()
+        
+        if not otp:
+            return Response(
+                {
+                    'verified': False,
+                    'error': '未找到有效的驗證碼，請重新發送'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 檢查 OTP 是否有效
+        if not otp.is_valid():
+            if otp.failed_attempts >= 5:
+                return Response(
+                    {
+                        'verified': False,
+                        'error': '驗證失敗次數過多，請重新發送驗證碼'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                return Response(
+                    {
+                        'verified': False,
+                        'error': '驗證碼已過期，請重新發送'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # 驗證 code 是否正確
+        if otp.code != code:
+            # 增加失敗次數
+            otp.failed_attempts += 1
+            otp.save(update_fields=['failed_attempts'])
+            
+            return Response(
+                {
+                    'verified': False,
+                    'error': f'驗證碼錯誤，還剩 {5 - otp.failed_attempts} 次機會'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 驗證成功，標記為已使用
+        otp.is_used = True
+        otp.save(update_fields=['is_used'])
+        
+        # 生成臨時驗證 token（可選，用於後續註冊時驗證）
+        # 這裡可以使用 JWT 或其他方式生成 token
+        import secrets
+        verification_token = secrets.token_urlsafe(32)
+        
+        # 可以將 token 存儲在 session 或 cache 中
+        # 這裡簡化處理，直接返回成功
+        
+        return Response(
+            {
+                'verified': True,
+                'message': 'Email 驗證成功',
+                'token': verification_token  # 可選，用於後續註冊驗證
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class VerifyEmailView(APIView):
+    """
+    API endpoint to verify email availability before registration.
+    
+    GET /auth/users/verify-email/?email=<email>
+    This endpoint checks if an email is available for registration.
+    """
+    
+    permission_classes = []  # 公開訪問，不需要認證
+    
+    @extend_schema(
+        tags=['User Management'],
+        summary='Verify email availability (Public)',
+        description="""
+        驗證 email 是否可用於註冊。
+        
+        **用途：**
+        - 在註冊頁面實時檢查 email 是否已被使用
+        - 提供即時反饋，改善用戶體驗
+        - 避免用戶填寫完整表單後才發現 email 已被使用
+        
+        **返回結果：**
+        - `available`: true 表示 email 可用（未被使用）
+        - `available`: false 表示 email 已被使用
+        - `email`: 驗證的 email 地址
+        
+        **使用場景：**
+        - 用戶在註冊表單中輸入 email 時
+        - 前端可以實時調用此 API 檢查
+        - 如果 email 已被使用，可以立即提示用戶
+        
+        **注意事項：**
+        - 此 API 是公開的，不需要認證
+        - 只檢查 email 是否存在，不驗證 email 格式
+        - 建議在前端也進行 email 格式驗證
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='email',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description='要驗證的 email 地址'
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Email 驗證結果',
+                response=inline_serializer(
+                    name='EmailVerificationResponse',
+                    fields={
+                        'email': serializers.EmailField(help_text='驗證的 email 地址'),
+                        'available': serializers.BooleanField(help_text='email 是否可用（true=可用，false=已被使用）'),
+                        'message': serializers.CharField(help_text='狀態訊息'),
+                    }
+                )
+            ),
+            400: OpenApiResponse(
+                description='Bad Request - 缺少 email 參數或 email 格式無效',
+                response=inline_serializer(
+                    name='EmailVerificationErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息'),
+                    }
+                )
+            ),
+        }
+    )
+    def get(self, request):
+        """
+        驗證 email 是否可用於註冊
+        """
+        email = request.query_params.get('email', '').strip()
+        
+        if not email:
+            return Response(
+                {'error': 'email 參數是必填的'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 驗證 email 格式
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response(
+                {'error': 'email 格式無效'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 檢查 email 是否已被使用
+        email_exists = User.objects.filter(email__iexact=email).exists()
+        
+        return Response(
+            {
+                'email': email,
+                'available': not email_exists,
+                'message': '此 email 可用' if not email_exists else '此 email 已被使用'
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 class LogoutView(APIView):
@@ -201,64 +681,177 @@ class CustomUserViewSet(UserViewSet):
         Create a new user account and associated certificate application.
         
         在創建用戶的同時，如果提供了證書申請相關欄位，則創建 CertificateApplication。
+        
+        根據請求數據自動選擇合適的 serializer：
+        - 如果只包含基本欄位（email, password, username, occupation_category, information_source, clinic_id），
+          使用 SimpleUserCreateSerializer
+        - 否則使用 UserCreateSerializer（包含完整的證書申請欄位）
         """
-        serializer = self.get_serializer(data=request.data)
+        # 檢查是否應該使用簡化的 serializer
+        request_data = request.data
+        simple_fields = {
+            'email', 
+            'password', 
+            'username', 
+            'occupation_category', 
+            'information_source', 
+            'clinic_id', 
+            'first_name', 
+            'last_name', 
+            'phone_number',
+            'surgery_date',
+            'surgeon_name',
+        }
+        has_only_simple_fields = set(request_data.keys()).issubset(simple_fields)
+        
+        if has_only_simple_fields:
+            print("has_only_simple_fields: ", has_only_simple_fields)
+            from users.serializers import SimpleUserCreateSerializer
+            serializer = SimpleUserCreateSerializer(data=request.data)
+        else:
+            serializer = self.get_serializer(data=request.data)
+        
         serializer.is_valid(raise_exception=True)
+
+        print("serializer.validated_data: ", serializer.validated_data)
         
         # 提取證書申請相關的欄位（這些欄位不會被保存到 User 模型）
         # 注意：occupation_category 現在是 User 模型的欄位，不需要 pop
         certificate_fields = {
             'clinic_id': serializer.validated_data.pop('clinic_id', None),
-            'consultation_clinic_id': serializer.validated_data.pop('consultation_clinic_id', None),
             'surgeon_name': serializer.validated_data.pop('surgeon_name', None),
             'surgery_date': serializer.validated_data.pop('surgery_date', None),
-            'consultant_name': serializer.validated_data.pop('consultant_name', None),
-            'information_source': serializer.validated_data.pop('information_source', None),
         }
-        
-        # 創建用戶（occupation_category 會自動保存到 User 模型）
+
+        print("certificate_fields: ", certificate_fields)
+
+        # return Response(
+        #     {
+        #         'message': 'certificate_fields: ' + str(certificate_fields)
+        #     },
+        #     status=status.HTTP_400_BAD_REQUEST
+        # )
+
         user = serializer.save()
         
-        # 如果提供了證書申請相關欄位，創建 CertificateApplication
-        if certificate_fields.get('clinic_id') and certificate_fields.get('information_source'):
+        # 如果提供了證書申請相關欄位，使用 SubmitCertificateApplicationView 的邏輯創建 CertificateApplication
+        if certificate_fields.get('clinic_id'):
             from clinic.models import CertificateApplication, Clinic
-            from django.utils import timezone
-            from datetime import timedelta
-            import secrets
+            from django.db import transaction
+            from django.core.mail import send_mail
+            from django.utils.html import strip_tags
+            from django.conf import settings
+            import logging
+            
+            logger = logging.getLogger(__name__)
             
             try:
                 # 獲取診所
                 clinic = Clinic.objects.get(id=certificate_fields['clinic_id'])
+                print("clinic: ", clinic)
+                print("clinic.email: ", clinic.email)
+
+                # 檢查診所是否有 email（與 SubmitCertificateApplicationView 相同）
+                if not clinic.email:
+                    logger.warning(f"診所 {clinic.id} 未設置電子郵件地址，無法發送驗證 email")
+                    # 不阻止用戶創建，但記錄警告
+
+                    return Response(
+                        {
+                            'message': '診所未設置電子郵件地址，無法發送驗證 email'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # 獲取諮詢診所（如果提供）
                 consultation_clinic = None
-                
                 if certificate_fields.get('consultation_clinic_id'):
-                    consultation_clinic = Clinic.objects.get(id=certificate_fields['consultation_clinic_id'])
+                    try:
+                        consultation_clinic = Clinic.objects.get(id=certificate_fields['consultation_clinic_id'])
+                    except Clinic.DoesNotExist:
+                        logger.warning(f"諮詢診所不存在: consultation_clinic_id={certificate_fields.get('consultation_clinic_id')}")
+                        # 不阻止用戶創建，但記錄警告
+
+                        return Response(
+                            {
+                                'message': '諮詢診所不存在，無法發送驗證 email'
+                            },
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
                 
-                # 生成驗證 token
-                verification_token = secrets.token_urlsafe(32)
-                token_expires_at = timezone.now() + timedelta(days=7)
+                # 構建 certificate_data（包含用戶的 email）
+                certificate_data = {
+                    'email': user.email,
+                }
                 
-                # 創建證書申請
-                CertificateApplication.objects.create(
-                    user=user,
-                    clinic=clinic,
-                    consultation_clinic=consultation_clinic,
-                    surgeon_name=certificate_fields.get('surgeon_name') or '',
-                    surgery_date=certificate_fields.get('surgery_date'),
-                    consultant_name=certificate_fields.get('consultant_name') or '',
-                    information_source=certificate_fields['information_source'],
-                    verification_token=verification_token,
-                    token_expires_at=token_expires_at,
-                    certificate_data={},  # 初始為空，後續可以更新
-                )
+                # 如果有其他證書相關資料，也加入
+                if certificate_fields.get('surgeon_name'):
+                    certificate_data['surgeon_name'] = certificate_fields['surgeon_name']
+                if certificate_fields.get('surgery_date'):
+                    certificate_data['surgery_date'] = certificate_fields['surgery_date'].strftime('%Y-%m-%d') if hasattr(certificate_fields['surgery_date'], 'strftime') else str(certificate_fields['surgery_date'])
+                
+                # 使用事務確保數據一致性（使用與 SubmitCertificateApplicationView 相同的邏輯）
+                application = None
+                token = None
+                try:
+                    with transaction.atomic():
+                        # 創建證書申請實例（先不保存）
+                        application = CertificateApplication(
+                            user=user,
+                            clinic=clinic,
+                            surgeon_name=certificate_fields.get('surgeon_name'),
+                            surgery_date=certificate_fields.get('surgery_date'),
+                            certificate_data=certificate_data,
+                            create_user=user
+                        )
+                        
+                        # 生成驗證 token（這會設置 verification_token 和 token_expires_at）
+                        token = application.generate_verification_token()
+                        
+                        # 保存申請
+                        application.save()
+                except Exception as e:
+                    logger.error(f"Failed to create certificate application for user {user.id}: {e}", exc_info=True)
+                    # 不阻止用戶創建，但記錄錯誤
+                    application = None
+                    token = None
+
+                    return Response(
+                        {
+                            'message': '創建證書申請失敗，請稍後再試'
+                        },
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                
+                # 發送驗證 email（在事務外，避免影響數據保存，與 SubmitCertificateApplicationView 相同）
+                if application and token and clinic.email:
+                    try:
+                        self._send_certificate_verification_email(application, token)
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to send verification email for application {application.id}: {e}",
+                            exc_info=True
+                        )
+                        # 即使發送失敗，也繼續（可以稍後重試或手動發送）
+                
             except Clinic.DoesNotExist:
-                # 如果診所不存在，記錄錯誤但不阻止用戶創建
-                import logging
-                logger = logging.getLogger(__name__)
+                # 如果主要診所不存在，記錄錯誤但不阻止用戶創建
                 logger.error(f"診所不存在: clinic_id={certificate_fields.get('clinic_id')}")
+            except Exception as e:
+                # 其他錯誤也不阻止用戶創建
+                logger.error(f"創建證書申請時發生錯誤: {e}", exc_info=True)
+
+                return Response(
+                    {
+                        'message': '創建證書申請失敗，請稍後再試'
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
         
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response({
+            'message': '用戶創建成功',
+            'data': serializer.data
+        }, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         tags=['User Management'],
@@ -739,6 +1332,85 @@ class CustomUserViewSet(UserViewSet):
     def me(self, request, *args, **kwargs):
         """Handle current user profile operations (GET, PUT, PATCH, DELETE)."""
         return super().me(request, *args, **kwargs)
+    
+    def _send_certificate_verification_email(self, application, token):
+        """
+        發送驗證 email 到診所（使用與 SubmitCertificateApplicationView 相同的邏輯）
+        
+        Args:
+            application: CertificateApplication 實例
+            token: 驗證 token
+            
+        Raises:
+            Exception: 如果發送失敗
+        """
+        from django.core.mail import send_mail
+        from django.utils.html import strip_tags
+        from django.conf import settings
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        if not application.clinic.email:
+            raise ValueError(f"Clinic {application.clinic.id} does not have an email address")
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        
+        # 構建驗證連結
+        verification_url = f"{frontend_url}/certificate/verify?token={token}"
+        
+        # 構建 email 內容
+        subject = '證書申請驗證 - 請確認證書發放'
+        
+        # 從用戶獲取申請人資訊
+        applicant_name = application.get_applicant_name()
+        applicant_email = application.get_applicant_email()
+        applicant_phone = application.get_applicant_phone()
+        surgeon_name = application.surgeon_name or application.certificate_data.get('surgeon_name', '未提供')
+        surgery_date = application.surgery_date.strftime('%Y-%m-%d') if application.surgery_date else application.certificate_data.get('surgery_date', '未提供')
+        
+        # 使用 HTML 模板
+        html_message = f"""
+        <html>
+        <body>
+            <h2>證書申請驗證</h2>
+            <p>親愛的 {application.clinic.name} 診所：</p>
+            <p>您收到一份證書申請，申請人資訊如下：</p>
+            <ul>
+                <li><strong>申請人姓名：</strong>{applicant_name}</li>
+                <li><strong>申請人電子郵件：</strong>{applicant_email}</li>
+                {f'<li><strong>申請人電話：</strong>{applicant_phone}</li>' if applicant_phone else ''}
+                <li><strong>手術醫師：</strong>{surgeon_name}</li>
+                <li><strong>手術日期：</strong>{surgery_date or '未提供'}</li>
+                <li><strong>申請時間：</strong>{application.create_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
+            </ul>
+            <p>請點擊以下連結確認並完成證書發放：</p>
+            <p><a href="{verification_url}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">確認並發放證書</a></p>
+            <p>或複製以下連結到瀏覽器：</p>
+            <p>{verification_url}</p>
+            <p><small>此連結將在 7 天後過期</small></p>
+            <hr>
+            <p><small>此為系統自動發送，請勿回覆此郵件。</small></p>
+        </body>
+        </html>
+        """
+        
+        plain_message = strip_tags(html_message)
+        
+        # 發送 email
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[application.clinic.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        logger.info(
+            f"Verification email sent successfully to {application.clinic.email} "
+            f"for application {application.id} (user: {application.user.id}, clinic: {application.clinic.id})"
+        )
 
     @extend_schema(
         tags=['User Management'],
