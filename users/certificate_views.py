@@ -8,7 +8,7 @@ import requests
 from rest_framework import status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiExample, inline_serializer
 from django.conf import settings
 from typing import Tuple, Optional, Dict, Any
@@ -539,6 +539,9 @@ def issue_certificates_to_existing_group(request_data: Dict[str, Any]) -> Tuple[
         'x-api-key': api_key,
         'Content-Type': 'application/json',
     }
+
+    print(request_data)
+    # return (request_data, status.HTTP_200_OK)
     
     try:
         # 調用外部 API
@@ -557,10 +560,21 @@ def issue_certificates_to_existing_group(request_data: Dict[str, Any]) -> Tuple[
         # 處理不同的 HTTP 狀態碼
         if response.status_code in [200, 201]:  # 200 或 201 都表示成功
             response_data = response.json()
+            print("response_data: ", response_data)
             business_code = response_data.get('businessCode', 0)
             
             if business_code == 0:
                 # 成功開始發證流程
+                # 發送證書發放通知簡訊
+                # send_certificate_issue_notification_sms(request_data)
+
+                # 透過 cert_id 直接獲取最新證書資料
+                certRecordGroupId = response_data.get('certRecordGroupId')
+                certificate_data = get_certificate(cert_id=certRecordGroupId)
+                print("certificate_data: ", certificate_data)
+
+
+
                 return (response_data, status.HTTP_200_OK)
             else:
                 # 其他業務錯誤
@@ -704,7 +718,7 @@ class IssueCertificatesToNewGroupView(APIView):
                 'customEmail': serializers.DictField(required=False, help_text='自訂電子郵件設定'),
                 'certPassword': serializers.CharField(required=True, help_text='發證密鑰（必填）'),
                 'certRecordRemark': serializers.CharField(required=False, help_text='證書備註'),
-                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知'),
+                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知（默認：True）'),
                 'setVisibilityPublic': serializers.BooleanField(required=False, help_text='設定為公開'),
                 'certsData': serializers.ListField(
                     required=True, 
@@ -728,8 +742,8 @@ class IssueCertificatesToNewGroupView(APIView):
                     },
                     "certPassword": "password123",
                     "certRecordRemark": "備註",
-                    "skipSendingNotification": False,
-                    "setVisibilityPublic": False,
+                    "skipSendingNotification": True,
+                    "setVisibilityPublic": True,
                     "certsData": [{}],
                     "pdfProtectionPassword": "",
                     "autoNotificationTime": "2025-12-01",
@@ -893,7 +907,7 @@ class IssueCertificatesToExistingGroupView(APIView):
                 'customEmail': serializers.DictField(required=False, help_text='自訂電子郵件設定'),
                 'certPassword': serializers.CharField(required=True, help_text='發證密鑰（必填）'),
                 'certRecordRemark': serializers.CharField(required=False, help_text='證書備註'),
-                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知'),
+                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知（默認：True）'),
                 'setVisibilityPublic': serializers.BooleanField(required=False, help_text='設定為公開'),
                 'certsData': serializers.ListField(
                     required=True, 
@@ -916,8 +930,8 @@ class IssueCertificatesToExistingGroupView(APIView):
                     },
                     "certPassword": "password123",
                     "certRecordRemark": "備註",
-                    "skipSendingNotification": False,
-                    "setVisibilityPublic": False,
+                    "skipSendingNotification": True,
+                    "setVisibilityPublic": True,
                     "certsData": [{}],
                     "pdfProtectionPassword": "",
                     "autoNotificationTime": "2025-12-01",
@@ -1017,25 +1031,86 @@ class IssueCertificatesToExistingGroupView(APIView):
         return Response(response_data, status=status_code)
 
 
-def build_certs_data_from_template(template_data: Dict[str, Any], user_data: Dict[str, Any]) -> list:
+def build_certs_data_from_template(template_data: Dict[str, Any], user_data: Dict[str, Any] = None, certificate_application=None) -> list:
     """
-    根據模板資訊和用戶提供的資料構建 certsData。
+    根據模板資訊和用戶提供的資料構建 certsData，自動帶入會員資料、就診醫院、醫師、日期和認證序號。
     
     Args:
         template_data: 模板資訊（從 get_template 獲取）
-        user_data: 用戶提供的證書資料（包含 email 和對應模板欄位的值）
+        user_data: 用戶提供的證書資料（包含 email 和對應模板欄位的值，可選）
+        certificate_application: CertificateApplication 實例（可選，如果提供則自動帶入相關資料）
         
     Returns:
         certsData 列表
     """
     key_list = template_data.get('content', {}).get('keyList', [])
     
-    # 構建證書資料
-    cert_data = {
-        'email': user_data.get('email', 'example@example.com')  # email 是必填欄位
-    }
+    # 如果提供了 certificate_application，自動帶入相關資料
+    if certificate_application:
+        user = certificate_application.user
+        clinic = certificate_application.clinic
+        
+        # 自動帶入會員姓名（組合 first_name 和 last_name）
+        member_name = ""
+        if user.first_name or user.last_name:
+            member_name = f"{user.first_name or ''}{user.last_name or ''}".strip()
+        elif user.username:
+            member_name = user.username
+        else:
+            member_name = user.email.split('@')[0] if user.email else "會員"
+        
+        # 自動帶入就診醫院
+        hospital_name = clinic.name if clinic else ""
+        
+        # 自動帶入手術執行醫師
+        # 優先從 certificate_application.surgeon_name 獲取，如果為空則從 certificate_data 中獲取
+        surgeon_name = certificate_application.surgeon_name or ""
+        if not surgeon_name and certificate_application.certificate_data:
+            surgeon_name = certificate_application.certificate_data.get('tx-103', '') or certificate_application.certificate_data.get('surgeon_name', '')
+        
+        # 自動帶入手術執行日期
+        # 優先從 certificate_application.surgery_date 獲取，如果為空則從 certificate_data 中獲取
+        surgery_date = ""
+        if certificate_application.surgery_date:
+            surgery_date = certificate_application.surgery_date.strftime('%Y-%m-%d')
+        elif certificate_application.certificate_data:
+            # 嘗試從 certificate_data 中獲取日期
+            date_value = certificate_application.certificate_data.get('tx-104', '') or certificate_application.certificate_data.get('surgery_date', '')
+            if date_value:
+                # 如果已經是字符串格式，直接使用；如果是日期對象，需要格式化
+                if isinstance(date_value, str):
+                    surgery_date = date_value
+                else:
+                    # 嘗試解析為日期
+                    try:
+                        from datetime import datetime
+                        if isinstance(date_value, datetime):
+                            surgery_date = date_value.strftime('%Y-%m-%d')
+                    except:
+                        surgery_date = str(date_value)
+        
+        # 生成或獲取認證序號
+        if not certificate_application.certificate_number:
+            certificate_application.certificate_number = certificate_application.generate_certificate_number()
+            certificate_application.save(update_fields=['certificate_number'])
+        cert_number = certificate_application.certificate_number
+        
+        # 構建證書資料，優先使用用戶提供的資料，否則使用自動帶入的資料
+        cert_data = {
+            'email': user_data.get('email') if user_data else user.email or 'example@example.com'
+        }
+    else:
+        # 沒有提供 certificate_application，使用用戶提供的資料或默認值
+        cert_data = {
+            'email': user_data.get('email', 'example@example.com') if user_data else 'example@example.com'
+        }
+        member_name = ""
+        hospital_name = ""
+        surgeon_name = ""
+        surgery_date = ""
+        cert_number = ""
     
-    # 根據模板的 keyList 填入用戶提供的資料
+    # 根據模板的 keyList 填入用戶提供的資料或自動帶入的資料
     for key_item in key_list:
         key = key_item.get('key')
         
@@ -1043,31 +1118,54 @@ def build_certs_data_from_template(template_data: Dict[str, Any], user_data: Dic
         if not key or not key.startswith('tx-'):
             continue
         
-        # 如果用戶提供了該欄位的值，使用用戶的值；否則使用默認值
-        if key in user_data:
-            cert_data[key] = user_data[key]
-        else:
-            # 根據類型設置默認值
-            key_type = key_item.get('type', '')
-            description = key_item.get('description', '')
-            
-            if 'string' in key_type or 'text' in key_type:
-                if '姓名' in description or 'name' in description.lower():
-                    cert_data[key] = "張三"
-                elif '日期' in description or 'date' in description.lower():
-                    cert_data[key] = "2025-12-01"
-                elif '獎狀' in description or 'certificate' in description.lower():
-                    cert_data[key] = "示例獎狀"
-                else:
-                    cert_data[key] = f"示例{key}"
-            elif 'number' in key_type or 'integer' in key_type:
-                cert_data[key] = 123
-            elif 'date' in key_type:
-                cert_data[key] = "2025-12-01"
-            elif 'email' in key_type:
-                cert_data[key] = user_data.get('email', 'example@example.com')
+        # 優先順序：用戶提供的值（非空） > certificate_data 中的值（非空） > 根據 key 自動填充 > 空值
+        user_value = user_data.get(key) if user_data else None
+        cert_data_value = None
+        if certificate_application and certificate_application.certificate_data:
+            cert_data_value = certificate_application.certificate_data.get(key)
+        
+        # 如果用戶提供了非空值，使用用戶的值
+        if user_value and str(user_value).strip():
+            cert_data[key] = user_value
+        # 如果 certificate_data 中有非空值，使用 certificate_data 中的值
+        elif cert_data_value and str(cert_data_value).strip():
+            cert_data[key] = cert_data_value
+        # 否則根據 key 自動填充
+        elif certificate_application:
+            # 根據特定的 key 自動填充對應的資料
+            if key == 'tx-101':
+                # tx-101: 姓名
+                cert_data[key] = member_name
+            elif key == 'tx-102':
+                # tx-102: 就診醫院
+                cert_data[key] = hospital_name
+            elif key == 'tx-103':
+                # tx-103: 手術執行醫師
+                cert_data[key] = surgeon_name
+            elif key == 'tx-104':
+                # tx-104: 手術執行日期
+                cert_data[key] = surgery_date if surgery_date else ""
+            elif key == 'tx-105':
+                # tx-105: 認證序號
+                cert_data[key] = cert_number
             else:
-                cert_data[key] = f"示例值_{key}"
+                # 其他欄位設置為空字符串，讓用戶自己填寫
+                key_type = key_item.get('type', '')
+                if 'number' in key_type or 'integer' in key_type:
+                    cert_data[key] = None  # 數字類型使用 None
+                elif 'date' in key_type:
+                    cert_data[key] = ""  # 日期類型使用空字符串
+                else:
+                    cert_data[key] = ""  # 其他類型使用空字符串
+        else:
+            # 沒有提供 certificate_application，設置為空字符串
+            key_type = key_item.get('type', '')
+            if 'number' in key_type or 'integer' in key_type:
+                cert_data[key] = None  # 數字類型使用 None
+            elif 'date' in key_type:
+                cert_data[key] = ""  # 日期類型使用空字符串
+            else:
+                cert_data[key] = ""  # 其他類型使用空字符串
     
     return [cert_data]
 
@@ -1136,8 +1234,8 @@ class IssueCertificatesWithTemplateView(APIView):
                     "token": "your_verification_token_here",
                     "name": "證書群組名稱",
                     "isDownloadButtonEnabled": True,
-                    "skipSendingNotification": False,
-                    "setVisibilityPublic": False,
+                    "skipSendingNotification": True,
+                    "setVisibilityPublic": True,
                     "certRecordRemark": "備註",
                     "certificateData": {
                         "email": "user@example.com",
@@ -1313,7 +1411,8 @@ class IssueCertificatesWithTemplateView(APIView):
         # 步驟 2: 構建 certsData
         # 優先使用請求中的 certificateData，如果沒有則使用申請時提交的資料
         user_certificate_data = request_data.get('certificateData', application.certificate_data)
-        certs_data = build_certs_data_from_template(template_data, user_certificate_data)
+        # 傳入 application 以自動帶入會員資料、就診醫院、醫師、日期和認證序號
+        certs_data = build_certs_data_from_template(template_data, user_certificate_data, certificate_application=application)
         
         # 步驟 3: 構建發證請求數據
         from datetime import datetime, timezone
@@ -1324,8 +1423,8 @@ class IssueCertificatesWithTemplateView(APIView):
             'certsData': certs_data,
             'certPassword': cert_password,
             'isDownloadButtonEnabled': request_data.get('isDownloadButtonEnabled', True),
-            'skipSendingNotification': request_data.get('skipSendingNotification', False),
-            'setVisibilityPublic': request_data.get('setVisibilityPublic', False),
+            'skipSendingNotification': request_data.get('skipSendingNotification', True),
+            'setVisibilityPublic': request_data.get('setVisibilityPublic', True),
             'certRecordRemark': request_data.get('certRecordRemark', ''),
             'pdfProtectionPassword': request_data.get('pdfProtectionPassword', ''),
         }
@@ -1364,4 +1463,329 @@ class IssueCertificatesWithTemplateView(APIView):
                 # 即使更新狀態失敗，也返回成功（證書已經發放）
         
         return Response(response_data, status=status_code)
+
+
+def get_certificate(cert_id: Optional[int] = None, cert_hash: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], int]:
+    """
+    從外部 API 獲取證書詳細資料。
+    
+    Args:
+        cert_id: 證書 ID（可選，至少需要提供 id 或 hash 其中一個）
+        cert_hash: 證書 hash（可選，至少需要提供 id 或 hash 其中一個）
+        
+    Returns:
+        Tuple[Optional[Dict], int]: (響應數據, HTTP 狀態碼)
+        - 成功時返回 (response_data, status_code)
+        - 錯誤時返回 (error_dict, status_code)
+        
+    Raises:
+        不拋出異常，所有錯誤都通過返回值處理
+    """
+    if not cert_id and not cert_hash:
+        return (
+            {'error': '至少需要提供 id 或 hash 其中一個參數'},
+            status.HTTP_400_BAD_REQUEST
+        )
+    
+    # 從設置中獲取外部 API 的 base URL 和 API key
+    external_api_base_url = getattr(
+        settings, 
+        'CERTIFICATE_API_BASE_URL', 
+        'https://tc-platform-service.turingcerts.com'
+    )
+    
+    api_key = getattr(
+        settings,
+        'CERTIFICATE_API_KEY',
+        ''
+    )
+    
+    if not api_key:
+        logger.error("CERTIFICATE_API_KEY 未配置")
+        return (
+            {'error': 'API key 未配置，請聯繫管理員'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    # 構建外部 API URL
+    external_api_url = f"{external_api_base_url}/openapi/v1/cert-record-groups/get-certificates"
+    
+    # 準備請求參數和標頭
+    params = {}
+    if cert_id:
+        params['id'] = cert_id
+    if cert_hash:
+        params['hash'] = cert_hash
+    
+    headers = {
+        'x-api-key': api_key,
+        'Content-Type': 'application/json',
+    }
+    
+    try:
+        # 調用外部 API
+        response = requests.get(
+            external_api_url,
+            params=params,
+            headers=headers,
+            timeout=30
+        )
+        
+        # 記錄響應狀態
+        logger.info(
+            f"External API call to {external_api_url} returned status {response.status_code} "
+            f"for cert_id={cert_id}, cert_hash={cert_hash}"
+        )
+        
+        # 處理不同的 HTTP 狀態碼
+        if response.status_code == 200:
+            response_data = response.json()
+            business_code = response_data.get('businessCode', 0)
+            
+            if business_code == 0:
+                return (response_data, status.HTTP_200_OK)
+            else:
+                return (response_data, status.HTTP_200_OK)
+        
+        elif response.status_code == 400:
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_400_BAD_REQUEST)
+            except ValueError:
+                return (
+                    {'error': '請求參數錯誤'},
+                    status.HTTP_400_BAD_REQUEST
+                )
+        
+        elif response.status_code == 403:
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_403_FORBIDDEN)
+            except ValueError:
+                return (
+                    {'error': '沒有權限訪問此證書'},
+                    status.HTTP_403_FORBIDDEN
+                )
+        
+        elif response.status_code == 404:
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_404_NOT_FOUND)
+            except ValueError:
+                return (
+                    {'error': '證書不存在'},
+                    status.HTTP_404_NOT_FOUND
+                )
+        
+        else:
+            logger.error(
+                f"External API returned unexpected status {response.status_code}: {response.text}"
+            )
+            return (
+                {
+                    'error': f'外部 API 返回錯誤狀態碼: {response.status_code}',
+                    'details': response.text[:500]
+                },
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout when calling external API for certificate id={cert_id}, hash={cert_hash}")
+        return (
+            {'error': '外部 API 請求超時，請稍後再試'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Connection error when calling external API for certificate id={cert_id}, hash={cert_hash}")
+        return (
+            {'error': '無法連接到外部 API，請檢查網路連接'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request exception when calling external API: {str(e)}")
+        return (
+            {'error': f'外部 API 請求失敗: {str(e)}'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except ValueError as e:
+        logger.error(f"JSON decode error: {str(e)}")
+        return (
+            {'error': '外部 API 返回的響應格式無效'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except Exception as e:
+        logger.error(f"Unexpected error when calling external API: {str(e)}", exc_info=True)
+        return (
+            {'error': f'獲取證書失敗: {str(e)}'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def get_pdf_url(pdf_id: str) -> Tuple[Optional[str], int]:
+    """
+    從外部 API 獲取證書 PDF 檔案 URL。
+    
+    Args:
+        pdf_id: PDF 檔案 ID（從證書資料中取得）
+        
+    Returns:
+        Tuple[Optional[str], int]: (PDF URL 或錯誤訊息, HTTP 狀態碼)
+        - 成功時返回 (redirect_url, status_code) - 會重新導向到 GCS link
+        - 錯誤時返回 (error_dict, status_code)
+        
+    Raises:
+        不拋出異常，所有錯誤都通過返回值處理
+    """
+    if not pdf_id:
+        return (
+            {'error': 'pdf_id 是必填參數'},
+            status.HTTP_400_BAD_REQUEST
+        )
+    
+    # 從設置中獲取外部 API 的 base URL 和 API key
+    external_api_base_url = getattr(
+        settings, 
+        'CERTIFICATE_API_BASE_URL', 
+        'https://tc-platform-service.turingcerts.com'
+    )
+    
+    api_key = getattr(
+        settings,
+        'CERTIFICATE_API_KEY',
+        ''
+    )
+    
+    if not api_key:
+        logger.error("CERTIFICATE_API_KEY 未配置")
+        return (
+            {'error': 'API key 未配置，請聯繫管理員'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    # 構建外部 API URL
+    external_api_url = f"{external_api_base_url}/openapi/v1/files/get-url"
+    
+    # 準備請求參數和標頭
+    params = {'id': pdf_id}
+    headers = {
+        'x-api-key': api_key,
+        'Content-Type': 'application/json',
+    }
+    
+    try:
+        # 調用外部 API（不跟隨重定向，獲取重定向 URL）
+        response = requests.get(
+            external_api_url,
+            params=params,
+            headers=headers,
+            timeout=30,
+            allow_redirects=False  # 不自動跟隨重定向
+        )
+        
+        # 記錄響應狀態
+        logger.info(
+            f"External API call to {external_api_url} returned status {response.status_code} "
+            f"for pdf_id={pdf_id}"
+        )
+        
+        # 處理重定向響應（302, 301, 307, 308）
+        if response.status_code in [301, 302, 307, 308]:
+            redirect_url = response.headers.get('Location')
+            if redirect_url:
+                return (redirect_url, status.HTTP_200_OK)
+            else:
+                return (
+                    {'error': '外部 API 返回重定向但沒有 Location header'},
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        elif response.status_code == 200:
+            # 如果直接返回 200，嘗試從響應中獲取 URL
+            try:
+                response_data = response.json()
+                # 如果響應是 JSON，可能包含 URL
+                if 'url' in response_data:
+                    return (response_data['url'], status.HTTP_200_OK)
+                elif 'content' in response_data and 'url' in response_data['content']:
+                    return (response_data['content']['url'], status.HTTP_200_OK)
+                else:
+                    # 如果響應是純文字 URL
+                    return (response.text.strip(), status.HTTP_200_OK)
+            except ValueError:
+                # 如果響應不是 JSON，可能是直接的 URL
+                return (response.text.strip(), status.HTTP_200_OK)
+        
+        elif response.status_code == 400:
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_400_BAD_REQUEST)
+            except ValueError:
+                return (
+                    {'error': '請求參數錯誤'},
+                    status.HTTP_400_BAD_REQUEST
+                )
+        
+        elif response.status_code == 403:
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_403_FORBIDDEN)
+            except ValueError:
+                return (
+                    {'error': '沒有權限訪問此 PDF'},
+                    status.HTTP_403_FORBIDDEN
+                )
+        
+        elif response.status_code == 404:
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_404_NOT_FOUND)
+            except ValueError:
+                return (
+                    {'error': 'PDF 檔案不存在'},
+                    status.HTTP_404_NOT_FOUND
+                )
+        
+        else:
+            logger.error(
+                f"External API returned unexpected status {response.status_code}: {response.text}"
+            )
+            return (
+                {
+                    'error': f'外部 API 返回錯誤狀態碼: {response.status_code}',
+                    'details': response.text[:500]
+                },
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout when calling external API for PDF id={pdf_id}")
+        return (
+            {'error': '外部 API 請求超時，請稍後再試'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except requests.exceptions.ConnectionError:
+        logger.error(f"Connection error when calling external API for PDF id={pdf_id}")
+        return (
+            {'error': '無法連接到外部 API，請檢查網路連接'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request exception when calling external API: {str(e)}")
+        return (
+            {'error': f'外部 API 請求失敗: {str(e)}'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    except Exception as e:
+        logger.error(f"Unexpected error when calling external API: {str(e)}", exc_info=True)
+        return (
+            {'error': f'獲取 PDF URL 失敗: {str(e)}'},
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 

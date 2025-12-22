@@ -27,8 +27,6 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             'create_time', 
             'update_time', 
             'active_member', 
-            'active_start_time',
-            'active_end_time',
             'email_sent_at',  # Email 發送時間為只讀
         )
 

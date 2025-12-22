@@ -54,7 +54,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     """
     queryset = Announcement.objects.all().order_by('-create_time')
     serializer_class = AnnouncementSerializer
-    permission_classes = [IsStaffRolePermission]
+    permission_classes = [IsAdminRolePermission]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
@@ -175,11 +175,12 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
             return
         
         # 構建公告列表連結（後台登入頁面）
-        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = getattr(settings, 'CLIENT_FRONTEND_URL', 'http://localhost:3000')
         announcements_url = f"{frontend_url}/announcements"  # 假設公告列表頁面路徑
+        site_name = getattr(settings, 'SITE_NAME', '系統')
         
         # 構建 email 內容
-        subject = f'新公告：{announcement.title}'
+        subject = f'{site_name} - 新公告：{announcement.title}'
         
         # 使用 HTML 模板
         html_message = f"""
@@ -215,15 +216,15 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         plain_message = strip_tags(html_message)
         plain_message = f"""新公告通知
 
-親愛的會員：
+            親愛的會員：
 
-我們發布了一則新公告：{announcement.title}
+            我們發布了一則新公告：{announcement.title}
 
-請點擊以下連結查看完整公告內容：
-{announcements_url}
+            請點擊以下連結查看完整公告內容：
+            {announcements_url}
 
-此為系統自動發送，請勿回覆此郵件。
-"""
+            此為系統自動發送，請勿回覆此郵件。
+        """
         
         # 獲取所有會員的 email 列表
         recipient_list = list(clients.values_list('email', flat=True))
@@ -232,12 +233,13 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
             logger.warning(f"No valid email addresses found for clients")
             return
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=recipient_list,
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=recipient_list,  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False,
         )

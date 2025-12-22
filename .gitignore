@@ -37,3 +37,6 @@ Thumbs.db
 # Agent OS
 .claude/*
 agent-os/*
+
+# AWS Lambda deployment package
+artifact.zip

@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils.html import strip_tags
 from rest_framework import status, serializers, viewsets, filters
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
@@ -36,10 +36,50 @@ from users.certificate_views import (
     get_template,
     issue_certificates_to_new_group,
     issue_certificates_to_existing_group,
-    build_certs_data_from_template
+    build_certs_data_from_template,
+    get_certificate,
+    get_pdf_url
 )
 
 logger = logging.getLogger(__name__)
+
+
+def check_certificate_application_permission(user, application):
+    """
+    檢查用戶是否有權限訪問指定的證書申請（獨立函數，可在多個類中使用）
+    
+    Args:
+        user: 當前用戶
+        application: CertificateApplication 實例
+        
+    Returns:
+        tuple: (has_permission: bool, error_message: str or None)
+    """
+    if not hasattr(user, 'role'):
+        return False, '用戶沒有角色資訊'
+    
+    # 超級管理員和管理員可以訪問所有申請
+    if user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+        return True, None
+    
+    # 診所管理員和診所員工只能訪問與他們有 ClinicUserPermission 關聯的診所相關的申請
+    if user.role in [UserRole.CLINIC_ADMIN, UserRole.CLINIC_STAFF]:
+        has_permission = ClinicUserPermission.objects.filter(
+            user=user,
+            clinic=application.clinic
+        ).exists()
+        if not has_permission:
+            return False, '您沒有權限訪問此診所的證書申請'
+        return True, None
+    
+    # 普通用戶只能訪問自己的申請
+    if user.role == UserRole.CLIENT:
+        if application.user != user:
+            return False, '您只能訪問自己的證書申請'
+        return True, None
+    
+    # 其他角色無權限
+    return False, '您沒有權限訪問證書申請'
 
 
 class ClinicViewSet(viewsets.ModelViewSet):
@@ -131,7 +171,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Clinic.objects.all().order_by('-create_time')
     serializer_class = ClinicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
@@ -667,12 +707,13 @@ class SubmitCertificateApplicationView(APIView):
         
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False,
         )
@@ -691,7 +732,7 @@ class VerifyCertificateTokenView(APIView):
     This endpoint verifies the token and returns application information.
     """
     
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # 允許未登入用戶訪問，因為這是從 email 連結點擊進來的
     
     @extend_schema(
         tags=['Certificates'],
@@ -751,7 +792,10 @@ class VerifyCertificateTokenView(APIView):
         
         if not token:
             return Response(
-                {'error': '缺少 token 參數'},
+                {
+                    'valid': False,
+                    'error': '缺少 token 參數'
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -759,17 +803,30 @@ class VerifyCertificateTokenView(APIView):
             application = CertificateApplication.objects.get(verification_token=token)
         except CertificateApplication.DoesNotExist:
             return Response(
-                {'error': '無效的 token'},
+                {
+                    'valid': False,
+                    'error': '無效的 token，找不到對應的證書申請'
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         # 檢查 token 是否有效
         if not application.is_token_valid():
+            # 提供更詳細的錯誤訊息
+            error_message = 'Token 已過期或已被使用'
+            if application.status == CertificateApplicationStatus.ISSUED:
+                error_message = '此證書申請已經發證，無法再次驗證'
+            elif application.status == CertificateApplicationStatus.EXPIRED:
+                error_message = 'Token 已過期（有效期為 7 天）'
+            elif application.status == CertificateApplicationStatus.CANCELLED:
+                error_message = '此證書申請已被取消'
+            
             return Response(
                 {
                     'valid': False,
-                    'error': 'Token 已過期或已被使用',
-                    'status': application.status
+                    'error': error_message,
+                    'status': application.status,
+                    'status_display': application.get_status_display()
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -839,10 +896,17 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
     ]
     pagination_class = StandardResultsSetPagination
     
+    def _check_certificate_application_permission(self, user, application):
+        """
+        檢查用戶是否有權限訪問指定的證書申請（調用獨立函數）
+        """
+        return check_certificate_application_permission(user, application)
+    
     def get_queryset(self):
         """
         根據用戶角色過濾證書申請：
-        - 管理員和工作人員：可以查看所有申請
+        - 超級管理員和管理員：可以查看所有申請
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能查看與他們有 ClinicUserPermission 關聯的診所相關的申請
         - 普通用戶（CLIENT）：只能查看自己的申請
         """
         queryset = super().get_queryset()
@@ -850,17 +914,29 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         # 檢查用戶角色
         user = self.request.user
         
-        # 如果是管理員或工作人員，可以查看所有申請
-        if hasattr(user, 'role') and user.role in [
-            UserRole.SUPER_ADMIN,
-            UserRole.ADMIN,
-            UserRole.CLINIC_ADMIN,
-            UserRole.CLINIC_STAFF,
-        ]:
+        if not hasattr(user, 'role'):
+            return queryset.none()
+        
+        # 超級管理員和管理員可以查看所有申請
+        if user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
             return queryset
         
+        # 診所管理員和診所員工只能查看與他們有 ClinicUserPermission 關聯的診所相關的申請
+        if user.role in [UserRole.CLINIC_ADMIN, UserRole.CLINIC_STAFF]:
+            # 獲取該用戶有權限的診所 ID 列表
+            permitted_clinic_ids = ClinicUserPermission.objects.filter(
+                user=user
+            ).values_list('clinic_id', flat=True)
+            
+            # 過濾證書申請，只返回這些診所的申請
+            return queryset.filter(clinic_id__in=permitted_clinic_ids)
+        
         # 普通用戶只能查看自己的申請
-        return queryset.filter(user=user)
+        if user.role == UserRole.CLIENT:
+            return queryset.filter(user=user)
+        
+        # 其他角色返回空查詢集
+        return queryset.none()
     
     @extend_schema(
         tags=['Certificate Applications'],
@@ -869,7 +945,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         獲取證書申請列表。
         
         **權限說明：**
-        - 管理員和工作人員：可以查看所有申請
+        - 超級管理員和管理員：可以查看所有申請
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能查看與他們有 ClinicUserPermission 關聯的診所相關的申請
         - 普通用戶（CLIENT）：只能查看自己的申請
         
         **查詢參數：**
@@ -1031,7 +1108,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         獲取證書申請詳細資訊。
         
         **權限說明：**
-        - 管理員和工作人員：可以查看所有申請
+        - 超級管理員和管理員：可以查看所有申請
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能查看與他們有 ClinicUserPermission 關聯的診所相關的申請
         - 普通用戶（CLIENT）：只能查看自己的申請
         """
     )
@@ -1039,14 +1117,15 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         """獲取證書申請詳細資訊"""
         instance = self.get_object()
         
-        # 檢查權限：普通用戶只能查看自己的申請
-        user = request.user
-        if hasattr(user, 'role') and user.role == UserRole.CLIENT:
-            if instance.user != user:
-                return Response(
-                    {'error': '您只能查看自己的證書申請'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        # 檢查權限
+        has_permission, error_message = self._check_certificate_application_permission(
+            request.user, instance
+        )
+        if not has_permission:
+            return Response(
+                {'error': error_message},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         return super().retrieve(request, *args, **kwargs)
     
@@ -1059,7 +1138,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         使用 PUT 進行完整更新，或使用 PATCH 進行部分更新。
         
         **權限說明：**
-        - 管理員和工作人員：可以更新所有申請
+        - 超級管理員和管理員：可以更新所有申請
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能更新與他們有 ClinicUserPermission 關聯的診所相關的申請
         - 普通用戶（CLIENT）：只能更新自己的申請
         
         **注意事項：**
@@ -1087,14 +1167,15 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
-        # 檢查權限：普通用戶只能更新自己的申請
-        user = request.user
-        if hasattr(user, 'role') and user.role == UserRole.CLIENT:
-            if instance.user != user:
-                return Response(
-                    {'error': '您只能更新自己的證書申請'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        # 檢查權限
+        has_permission, error_message = self._check_certificate_application_permission(
+            request.user, instance
+        )
+        if not has_permission:
+            return Response(
+                {'error': error_message},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -1145,7 +1226,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         部分更新證書申請（PATCH）。
         
         **權限說明：**
-        - 管理員和工作人員：可以更新所有申請
+        - 超級管理員和管理員：可以更新所有申請
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能更新與他們有 ClinicUserPermission 關聯的診所相關的申請
         - 普通用戶（CLIENT）：只能更新自己的申請
         """
     )
@@ -1161,7 +1243,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         刪除證書申請。
         
         **權限說明：**
-        - 管理員和工作人員：可以刪除所有申請
+        - 超級管理員和管理員：可以刪除所有申請
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能刪除與他們有 ClinicUserPermission 關聯的診所相關的申請
         - 普通用戶（CLIENT）：只能刪除自己的申請
         """
     )
@@ -1169,14 +1252,15 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         """刪除證書申請"""
         instance = self.get_object()
         
-        # 檢查權限：普通用戶只能刪除自己的申請
-        user = request.user
-        if hasattr(user, 'role') and user.role == UserRole.CLIENT:
-            if instance.user != user:
-                return Response(
-                    {'error': '您只能刪除自己的證書申請'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        # 檢查權限
+        has_permission, error_message = self._check_certificate_application_permission(
+            request.user, instance
+        )
+        if not has_permission:
+            return Response(
+                {'error': error_message},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         return super().destroy(request, *args, **kwargs)
     
@@ -1197,7 +1281,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         
         **權限限制：**
         - 一般會員（CLIENT）：只能取消證書（pending → cancelled），不能回復（cancelled → pending）
-        - 管理員和工作人員：可以取消和回復證書
+        - 超級管理員和管理員：可以取消和回復證書
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能取消和回復與他們有 ClinicUserPermission 關聯的診所相關的證書
         
         **注意事項：**
         - 只有申請人本人可以執行此操作
@@ -1265,18 +1350,20 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         
         # 檢查權限：只有申請人本人或後台權限人員可以切換狀態
         user = request.user
-        is_staff = hasattr(user, 'role') and user.role in [
-            UserRole.SUPER_ADMIN,
-            UserRole.ADMIN,
-            UserRole.CLINIC_ADMIN,
-            UserRole.CLINIC_STAFF,
-        ]
         
-        if application.user != user and not is_staff:
-            return Response(
-                {'error': '只有申請人本人或後台權限人員可以切換申請狀態'},
-                status=status.HTTP_403_FORBIDDEN
+        # 如果是申請人本人，允許切換
+        if application.user == user:
+            pass  # 允許繼續
+        else:
+            # 檢查後台權限人員是否有權限訪問此申請
+            has_permission, error_message = self._check_certificate_application_permission(
+                user, application
             )
+            if not has_permission:
+                return Response(
+                    {'error': error_message or '只有申請人本人或後台權限人員可以切換申請狀態'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         # 檢查當前狀態是否允許切換
         current_status = application.status
@@ -1436,6 +1523,16 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
+        # 檢查權限：後台權限人員必須有權限訪問此診所的申請
+        has_permission, error_message = self._check_certificate_application_permission(
+            request.user, application
+        )
+        if not has_permission:
+            return Response(
+                {'error': error_message or '您沒有權限訪問此診所的證書申請'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         # 檢查申請狀態必須是 pending
         if application.status != CertificateApplicationStatus.PENDING:
             return Response(
@@ -1546,12 +1643,13 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         # 純文字版本（用於不支持 HTML 的 email 客戶端）
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False
         )
@@ -1649,9 +1747,9 @@ class IssueCertificateView(APIView):
         2. 驗證申請狀態（必須是 verified 或 pending）
         3. 獲取證書模板資訊
         4. 構建證書資料
-        5. 根據是否提供 `certRecordGroupId` 決定發證方式：
-           - 如果提供 `certRecordGroupId`：發證到現有群組
-           - 如果未提供：發證到新群組
+        5. 根據環境變數 `CERTIFICATE_GROUP_ID` 決定發證方式：
+           - 如果環境變數 `CERTIFICATE_GROUP_ID` 已配置：發證到現有群組
+           - 如果環境變數未配置：發證到新群組
         6. 更新申請狀態為已發證（ISSUED）
         7. 保存證書 hash（如果返回）
         8. 返回證書群組 ID 和 hash
@@ -1660,19 +1758,20 @@ class IssueCertificateView(APIView):
         - `application_id`: 證書申請 ID
         
         **可選欄位：**
-        - `certRecordGroupId`: 證書群組 ID（如果提供，將發證到現有群組；否則創建新群組）
+        - `certRecordGroupId`: 已移除，改為從環境變數 `CERTIFICATE_GROUP_ID` 獲取
         - `name`: 證書群組名稱（僅在創建新群組時使用，默認：證書群組_{templateId}）
         - `certificateData`: 證書資料（如果未提供，將使用申請時提交的資料）
         - `isDownloadButtonEnabled`: 是否啟用下載按鈕（默認：true）
-        - `skipSendingNotification`: 跳過發送通知（默認：false）
-        - `setVisibilityPublic`: 設定為公開（默認：false）
+        - `skipSendingNotification`: 跳過發送通知（默認：True）
+        - `setVisibilityPublic`: 設定為公開（默認：True）
         - `certRecordRemark`: 證書備註
         - `pdfProtectionPassword`: PDF 保護密碼
         - `autoNotificationTime`: 自動通知時間（ISO 8601 格式）
         - `customEmail`: 自訂電子郵件設定
         
         **權限說明：**
-        - 管理員和工作人員：可以發放所有申請的證書
+        - 超級管理員和管理員：可以發放所有申請的證書
+        - 診所管理員和診所員工（CLINIC_ADMIN, CLINIC_STAFF）：只能發放與他們有 ClinicUserPermission 關聯的診所相關的證書
         - 普通用戶（CLIENT）：只能發放自己申請的證書
         
         **注意事項：**
@@ -1686,7 +1785,6 @@ class IssueCertificateView(APIView):
             name='IssueCertificateRequest',
             fields={
                 'application_id': serializers.IntegerField(required=True, help_text='證書申請 ID'),
-                'certRecordGroupId': serializers.IntegerField(required=False, help_text='證書群組 ID（如果提供，將發證到現有群組；否則創建新群組）'),
                 'name': serializers.CharField(required=False, help_text='證書群組名稱（僅在創建新群組時使用）'),
                 'certificateData': serializers.DictField(
                     required=False,
@@ -1708,8 +1806,8 @@ class IssueCertificateView(APIView):
                     "application_id": 1,
                     "name": "證書群組名稱",
                     "isDownloadButtonEnabled": True,
-                    "skipSendingNotification": False,
-                    "setVisibilityPublic": False,
+                    "skipSendingNotification": True,
+                    "setVisibilityPublic": True,
                     "certificateData": {
                         "email": "member@example.com",
                         "tx-101": "獎狀",
@@ -1787,14 +1885,16 @@ class IssueCertificateView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # 檢查權限：普通用戶只能發放自己申請的證書
+        # 檢查權限
         user = request.user
-        if hasattr(user, 'role') and user.role == UserRole.CLIENT:
-            if application.user != user:
-                return Response(
-                    {'error': '您只能發放自己申請的證書'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+        has_permission, error_message = check_certificate_application_permission(
+            user, application
+        )
+        if not has_permission:
+            return Response(
+                {'error': error_message or '您沒有權限發放此證書'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # 檢查申請狀態（應該是 verified 或 pending）
         if application.status not in [CertificateApplicationStatus.VERIFIED, CertificateApplicationStatus.PENDING]:
@@ -1873,13 +1973,13 @@ class IssueCertificateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        certs_data = build_certs_data_from_template(template_data, user_certificate_data)
+        certs_data = build_certs_data_from_template(template_data, user_certificate_data, certificate_application=application)
         
         # 步驟 3: 構建發證請求數據
         from datetime import datetime, timezone as tz
         
         # 檢查是否發證到現有群組
-        cert_record_group_id = request.data.get('certRecordGroupId')
+        cert_record_group_id = application.user.cert_record_group_id
         issue_to_existing_group = cert_record_group_id is not None
         
         # 構建通用請求數據
@@ -1887,8 +1987,8 @@ class IssueCertificateView(APIView):
             'certsData': certs_data,
             'certPassword': cert_password,
             'isDownloadButtonEnabled': request.data.get('isDownloadButtonEnabled', True),
-            'skipSendingNotification': request.data.get('skipSendingNotification', False),
-            'setVisibilityPublic': request.data.get('setVisibilityPublic', False),
+            'skipSendingNotification': request.data.get('skipSendingNotification', True),
+            'setVisibilityPublic': request.data.get('setVisibilityPublic', True),
             'certRecordRemark': request.data.get('certRecordRemark', ''),
             'pdfProtectionPassword': request.data.get('pdfProtectionPassword', ''),
         }
@@ -1911,9 +2011,30 @@ class IssueCertificateView(APIView):
         else:
             # 發證到新群組
             issue_request_data['templateId'] = template_id
-            issue_request_data['name'] = request.data.get('name', f'證書群組_{template_id}')
+            # 構建證書群組名稱：裸視美手術證書-診所名稱-申請日期-申請人名稱
+            if not request.data.get('name'):
+                # 獲取診所名稱
+                clinic_name = application.clinic.name if application.clinic else '未知診所'
+                # 獲取申請日期（格式：YYYYMMDD）
+                create_date = application.create_time.strftime('%Y%m%d') if application.create_time else ''
+                # 獲取申請人名稱
+                applicant_name = application.get_applicant_name() if hasattr(application, 'get_applicant_name') else ''
+                if not applicant_name and application.user:
+                    # 如果沒有 get_applicant_name 方法，手動組合
+                    if application.user.first_name or application.user.last_name:
+                        applicant_name = f"{application.user.first_name or ''}{application.user.last_name or ''}".strip()
+                    elif application.user.username:
+                        applicant_name = application.user.username
+                    else:
+                        applicant_name = application.user.email.split('@')[0] if application.user.email else '申請人'
+                # 組合名稱
+                issue_request_data['name'] = f'裸視美手術證書-{clinic_name}-{create_date}-{applicant_name}'
+            else:
+                issue_request_data['name'] = request.data.get('name')
         
         # 步驟 4: 發證（根據是否提供 certRecordGroupId 決定發證方式）
+        print(issue_request_data)
+        
         try:
             if issue_to_existing_group:
                 response_data, status_code = issue_certificates_to_existing_group(issue_request_data)
@@ -1923,6 +2044,11 @@ class IssueCertificateView(APIView):
                 response_data, status_code = issue_certificates_to_new_group(issue_request_data)
                 # 發證到新群組時，從響應中獲取群組 ID
                 certificate_group_id = response_data.get('content', {}).get('id')
+                application.user.cert_record_group_id = certificate_group_id
+                application.user.save()
+                logger.info(
+                    f"Certificate group ID {certificate_group_id} saved to user {application.user.id}"
+                )
         except Exception as e:
             logger.error(f"Failed to issue certificate for application {application.id}: {e}", exc_info=True)
             return Response(
@@ -1939,12 +2065,16 @@ class IssueCertificateView(APIView):
         # 步驟 5: 從響應中提取 hash 值
         # hash 可能在 content 中，也可能在 certsData 的每個證書對象中
         certificate_hash = None
-        content = response_data.get('content', {})
+        content = response_data.get('content') or {}
+        
+        # 確保 content 是字典類型
+        if not isinstance(content, dict):
+            content = {}
         
         # 嘗試從 content 中獲取 hash
-        if 'hash' in content:
+        if content and 'hash' in content:
             certificate_hash = content.get('hash')
-        elif 'certsData' in content and isinstance(content.get('certsData'), list) and len(content.get('certsData')) > 0:
+        elif content and 'certsData' in content and isinstance(content.get('certsData'), list) and len(content.get('certsData')) > 0:
             # 如果 certsData 是列表，取第一個證書的 hash
             first_cert = content.get('certsData')[0]
             if isinstance(first_cert, dict) and 'hash' in first_cert:
@@ -1992,6 +2122,16 @@ class IssueCertificateView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+
+        # 步驟 7: 發送證書發放通知 (先實作Email通知)
+        try:
+            send_certificate_issue_notification_email(application)
+        except Exception as e:
+            logger.error(
+                f"Failed to send certificate issue notification email for application {application.id}: {e}",
+                exc_info=True
+            )
+            # 即使發送失敗，也繼續返回成功（證書已經發放）
         
         return Response(
             {
@@ -2004,6 +2144,123 @@ class IssueCertificateView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+def send_certificate_issue_notification_email(application):
+    """
+    發送證書發放通知 email 給申請人
+    
+    Args:
+        application: CertificateApplication 實例（必須已發證）
+        
+    Raises:
+        Exception: 如果發送失敗
+    """
+    # 獲取申請人 email（優先從 certificate_data，否則從 user）
+    applicant_email = None
+    if application.certificate_data and isinstance(application.certificate_data, dict):
+        applicant_email = application.certificate_data.get('email')
+    
+    if not applicant_email and application.user:
+        applicant_email = application.user.email
+    
+    if not applicant_email:
+        raise ValueError(f"Application {application.id} does not have applicant email address")
+    
+    # 構建 email 內容
+    subject = '證書發放通知 - 您的證書已成功發放'
+    
+    # 獲取申請人資訊
+    applicant_name = application.get_applicant_name() or '申請人'
+    clinic_name = application.clinic.name if application.clinic else '診所'
+    certificate_number = application.certificate_number or '待生成'
+    issued_at = application.issued_at.strftime('%Y-%m-%d %H:%M:%S') if application.issued_at else '剛剛'
+    
+    # 構建查看證書的連結（如果有證書群組 ID）
+    certificate_url = None
+    if application.certificate_group_id:
+        frontend_url = getattr(settings, 'CLIENT_FRONTEND_URL', 'http://localhost:3001')
+        certificate_url = f"{frontend_url}"
+    
+    # 使用 HTML 模板
+    html_message = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #4CAF50; border-bottom: 3px solid #4CAF50; padding-bottom: 10px;">證書發放通知</h2>
+            <p>親愛的 {applicant_name}，</p>
+            <p>恭喜！您的證書已成功發放。</p>
+            
+            <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #333;">證書資訊</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="margin: 10px 0;"><strong>申請編號：</strong>#{application.id}</li>
+                    <li style="margin: 10px 0;"><strong>證書序號：</strong>{certificate_number}</li>
+                    <li style="margin: 10px 0;"><strong>診所名稱：</strong>{clinic_name}</li>
+                    {f'<li style="margin: 10px 0;"><strong>手術醫師：</strong>{application.surgeon_name}</li>' if application.surgeon_name else ''}
+                    {f'<li style="margin: 10px 0;"><strong>手術日期：</strong>{application.surgery_date.strftime("%Y-%m-%d")}</li>' if application.surgery_date else ''}
+                    <li style="margin: 10px 0;"><strong>發放時間：</strong>{issued_at}</li>
+                </ul>
+            </div>
+            
+            {f'''
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{certificate_url}" style="background-color: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">查看證書</a>
+            </div>
+            <p style="text-align: center; color: #666; font-size: 14px;">
+                或複製以下連結到瀏覽器：<br>
+                <a href="{certificate_url}" style="color: #4CAF50; word-break: break-all;">{certificate_url}</a>
+            </p>
+            ''' if certificate_url else '<p style="color: #666; font-size: 14px;">證書正在處理中，請稍後查看。</p>'}
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
+                <p>如有任何疑問，請聯繫相關診所或系統管理員。</p>
+                <p style="margin-top: 20px;"><small>此為系統自動發送，請勿回覆此郵件。</small></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # 純文字版本（用於不支持 HTML 的 email 客戶端）
+    plain_message = f"""
+證書發放通知
+
+親愛的 {applicant_name}，
+
+恭喜！您的證書已成功發放。
+
+證書資訊：
+- 申請編號：#{application.id}
+- 證書序號：{certificate_number}
+- 診所名稱：{clinic_name}
+{f'- 手術醫師：{application.surgeon_name}' if application.surgeon_name else ''}
+{f'- 手術日期：{application.surgery_date.strftime("%Y-%m-%d")}' if application.surgery_date else ''}
+- 發放時間：{issued_at}
+
+{f'查看證書：{certificate_url}' if certificate_url else '證書正在處理中，請稍後查看。'}
+
+如有任何疑問，請聯繫相關診所或系統管理員。
+
+此為系統自動發送，請勿回覆此郵件。
+    """
+    
+    # 發送 email（使用密件副本保護個資）
+    send_mail(
+        subject=subject,
+        message=plain_message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+        bcc=[applicant_email],  # 使用密件副本保護個資
+        html_message=html_message,
+        fail_silently=False,
+    )
+    
+    logger.info(
+        f"Certificate issue notification email sent successfully to {applicant_email} "
+        f"for application {application.id} (user: {application.user.id if application.user else 'N/A'}, "
+        f"clinic: {application.clinic.id if application.clinic else 'N/A'})"
+    )
 
 
 class DoctorViewSet(viewsets.ModelViewSet):
@@ -2216,3 +2473,269 @@ class DoctorViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """刪除醫生"""
         return super().destroy(request, *args, **kwargs)
+
+
+class GetCertificateView(APIView):
+    """
+    API endpoint to get certificate details.
+    
+    GET /api/certificates/get-certificate/
+    This endpoint retrieves certificate details by id or hash.
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Certificates'],
+        summary='Get certificate details',
+        description="""
+        獲取證書詳細資料。
+        
+        **流程說明：**
+        1. 檢查用戶是否有 cert_record_group_id（表示用戶已有證書群組）
+        2. 接收證書 id 或 hash 參數（至少需要提供其中一個）
+        3. 調用外部 API 獲取證書詳細資料
+        4. 返回證書資訊
+        
+        **必填參數（至少填寫其中一個）：**
+        - `id`: 證書 ID（number）
+        - `hash`: 證書 hash（string）
+        
+        **權限說明：**
+        - 用戶必須已登入
+        - 用戶必須有 cert_record_group_id（表示用戶已有證書群組）
+        
+        **返回內容：**
+        - `id`: 證書 id
+        - `certName`: 證書名字
+        - `institution`: 證書機構
+        - `issueTime`: 發證時間
+        - `blockchainHash`: 區塊鏈 Hash
+        - `visibility`: 公開或是不公開
+        - `expiredTime`: 過期時間
+        - `pdfld`: pdf 檔案 ID
+        - `datas`: 此證書包含的資料內容
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='id',
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='證書 ID'
+            ),
+            OpenApiParameter(
+                name='hash',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='證書 hash'
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='成功獲取證書資料',
+                response=inline_serializer(
+                    name='GetCertificateSuccessResponse',
+                    fields={
+                        'success': serializers.BooleanField(help_text='是否成功'),
+                        'code': serializers.IntegerField(help_text='HTTP 狀態碼'),
+                        'businessCode': serializers.IntegerField(help_text='業務代碼'),
+                        'content': serializers.DictField(help_text='證書內容'),
+                    }
+                )
+            ),
+            400: OpenApiResponse(
+                description='請求參數錯誤',
+                response=inline_serializer(
+                    name='GetCertificateErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+            403: OpenApiResponse(
+                description='權限不足或沒有證書群組',
+                response=inline_serializer(
+                    name='GetCertificateForbiddenResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+            404: OpenApiResponse(
+                description='證書不存在',
+                response=inline_serializer(
+                    name='GetCertificateNotFoundResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+            500: OpenApiResponse(
+                description='內部服務器錯誤或外部 API 調用失敗',
+                response=inline_serializer(
+                    name='GetCertificateServerErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+        }
+    )
+    def get(self, request):
+        """
+        獲取證書詳細資料
+        """
+        user = request.user
+        
+        # 檢查用戶是否有 cert_record_group_id
+        if not user.cert_record_group_id:
+            return Response(
+                {'error': '您尚未有證書群組，無法獲取證書資料'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # 獲取請求參數
+        cert_id = request.query_params.get('id')
+        cert_hash = request.query_params.get('hash')
+        
+        # 轉換 cert_id 為整數（如果提供）
+        if cert_id:
+            try:
+                cert_id = int(cert_id)
+            except ValueError:
+                return Response(
+                    {'error': 'id 參數必須是有效的整數'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # 調用外部 API 獲取證書資料
+        response_data, status_code = get_certificate(cert_id=cert_id, cert_hash=cert_hash)
+        
+        return Response(response_data, status=status_code)
+
+
+class GetCertificatePdfView(APIView):
+    """
+    API endpoint to get certificate PDF URL.
+    
+    GET /api/certificates/get-pdf/
+    This endpoint retrieves certificate PDF URL by pdf_id.
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Certificates'],
+        summary='Get certificate PDF URL',
+        description="""
+        獲取證書 PDF 檔案 URL。
+        
+        **流程說明：**
+        1. 檢查用戶是否有 cert_record_group_id（表示用戶已有證書群組）
+        2. 接收 pdf_id 參數
+        3. 調用外部 API 獲取 PDF URL（會重新導向至 GCS link，連結有效時長為3天）
+        4. 返回 PDF URL
+        
+        **必填參數：**
+        - `id`: PDF 檔案 ID（string，可以從證書資料取得）
+        
+        **權限說明：**
+        - 用戶必須已登入
+        - 用戶必須有 cert_record_group_id（表示用戶已有證書群組）
+        
+        **返回內容：**
+        - 重新導向至 GCS link（連結有效時長為3天）
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='id',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description='PDF 檔案 ID（可以從證書資料取得）'
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='成功獲取 PDF URL',
+                response=inline_serializer(
+                    name='GetPdfUrlSuccessResponse',
+                    fields={
+                        'url': serializers.CharField(help_text='PDF URL（GCS link，有效時長為3天）')
+                    }
+                )
+            ),
+            400: OpenApiResponse(
+                description='請求參數錯誤',
+                response=inline_serializer(
+                    name='GetPdfUrlErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+            403: OpenApiResponse(
+                description='權限不足或沒有證書群組',
+                response=inline_serializer(
+                    name='GetPdfUrlForbiddenResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+            404: OpenApiResponse(
+                description='PDF 檔案不存在',
+                response=inline_serializer(
+                    name='GetPdfUrlNotFoundResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+            500: OpenApiResponse(
+                description='內部服務器錯誤或外部 API 調用失敗',
+                response=inline_serializer(
+                    name='GetPdfUrlServerErrorResponse',
+                    fields={
+                        'error': serializers.CharField(help_text='錯誤訊息')
+                    }
+                )
+            ),
+        }
+    )
+    def get(self, request):
+        """
+        獲取證書 PDF URL
+        """
+        user = request.user
+        
+        # 檢查用戶是否有 cert_record_group_id
+        if not user.cert_record_group_id:
+            return Response(
+                {'error': '您尚未有證書群組，無法獲取 PDF 檔案'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # 獲取請求參數
+        pdf_id = request.query_params.get('id')
+        
+        if not pdf_id:
+            return Response(
+                {'error': 'id 參數是必填的'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 調用外部 API 獲取 PDF URL
+        pdf_url, status_code = get_pdf_url(pdf_id=pdf_id)
+        
+        # 如果成功獲取 URL，返回 URL
+        if status_code == status.HTTP_200_OK and isinstance(pdf_url, str):
+            return Response(
+                {'url': pdf_url},
+                status=status.HTTP_200_OK
+            )
+        
+        # 否則返回錯誤
+        return Response(pdf_url, status=status_code)

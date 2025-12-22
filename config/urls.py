@@ -6,7 +6,6 @@ The `urlpatterns` list routes URLs to views. For more information please see:
 """
 from django.contrib import admin
 from django.urls import path, include
-from users.views import LogoutView
 from users.oauth_views import oauth_login, GoogleCallback
 from users.twofactor_views import (
     enable_2fa, verify_setup_2fa, disable_2fa, get_2fa_status,
@@ -24,6 +23,8 @@ from clinic.views import (
     SubmitCertificateApplicationView,
     VerifyCertificateTokenView,
     IssueCertificateView,
+    GetCertificateView,
+    GetCertificatePdfView,
     DoctorViewSet,
     ClinicUserPermissionViewSet,
     CertificateApplicationViewSet
@@ -71,8 +72,8 @@ urlpatterns = [
     path('auth/jwt/refresh/', CustomTokenRefreshView.as_view(), name='jwt-refresh'),
     path('auth/jwt/verify/', CustomTokenVerifyView.as_view(), name='jwt-verify'),
 
-    # Custom logout endpoint with token blacklisting
-    path('auth/logout/', LogoutView.as_view(), name='logout'),
+    # Custom logout endpoint with token blacklisting (defined in users.urls)
+    # LogoutView is now imported in users.urls, accessible via /auth/logout/
 
     # Google OAuth endpoints
     path('auth/google/', oauth_login, name='google_login'),
@@ -96,6 +97,10 @@ urlpatterns = [
     path('api/certificates/submit-application/', SubmitCertificateApplicationView.as_view(), name='submit_certificate_application'),
     path('api/certificates/verify-token/', VerifyCertificateTokenView.as_view(), name='verify_certificate_token'),
     path('api/certificates/issue/', IssueCertificateView.as_view(), name='issue_certificate'),
+    
+    # Certificate retrieval endpoints
+    path('api/certificates/get-certificate/', GetCertificateView.as_view(), name='get_certificate'),
+    path('api/certificates/get-pdf/', GetCertificatePdfView.as_view(), name='get_certificate_pdf'),
 ]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

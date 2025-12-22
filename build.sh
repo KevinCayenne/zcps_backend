@@ -9,13 +9,19 @@ if [ ! -d "$directory" ]; then
   echo "Directory created: temp directory $directory"
 fi
 
+filtered_requirements=$(mktemp)
+trap 'rm -f "$filtered_requirements"' EXIT
+
+# Strip dj-rest-auth[with_social] before bulk install to avoid duplicate handling.
+sed '/^dj-rest-auth\[with_social\]/d' requirements.txt > "$filtered_requirements"
+
 pip install \
  --platform manylinux2014_x86_64 \
- --no-deps --prefer-binary \
+ --only-binary=:all: \
  --python-version 3.13 \
  --upgrade \
  --target $directory \
- -r requirements.txt
+ -r "$filtered_requirements"
 
 current_branch=$(git branch --show-current)
 if [ "$current_branch" != "prod" ]; then
@@ -35,7 +41,7 @@ pip install \
  --python-version 3.13 \
  --upgrade \
  --target $directory \
- apig-wsgi
+ apig-wsgi dj-rest-auth[with_social]
 
 if [ -e "$artifact" ]; then
     rm "$artifact"

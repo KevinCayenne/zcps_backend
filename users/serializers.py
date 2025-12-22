@@ -34,6 +34,13 @@ class UserSerializer(serializers.ModelSerializer):
         help_text='Username (optional, will be auto-generated from email if not provided)'
     )
     
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        help_text='Password (write-only, required for user creation)'
+    )
+    
     # 診所權限相關欄位
     clinic_permissions = serializers.SerializerMethodField(
         read_only=True,
@@ -53,6 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id',
             'username',
             'email',
+            'password',
             'first_name',
             'last_name',
             'phone_number',
@@ -72,12 +80,12 @@ class UserSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'clinic_permissions',
+            'cert_record_group_id',
             'clinic_ids',
         )
         read_only_fields = (
             'id',
             'username',
-            'password',
             'created_at',
             'updated_at',
             'email_verified',
@@ -87,6 +95,7 @@ class UserSerializer(serializers.ModelSerializer):
             'last_login',
             'date_joined',
             'clinic_permissions',
+            'cert_record_group_id',
         )
     
     def get_clinic_permissions(self, obj):
@@ -178,8 +187,216 @@ class UserSerializer(serializers.ModelSerializer):
         # Set the username (generated or provided)
         validated_data['username'] = username
         
+        # Extract password from validated_data if provided
+        password = validated_data.pop('password', None)
+        
         # Create the user
-        return super().create(validated_data)
+        user = super().create(validated_data)
+        
+        # Set password if provided (using set_password to properly hash it)
+        if password:
+            user.set_password(password)
+            user.save(update_fields=['password'])
+        
+        return user
+
+
+class SimpleUserCreateSerializer(serializers.ModelSerializer):
+    """
+    簡化的用戶註冊 Serializer，用於基本的用戶註冊場景。
+    occupation_category 和 information_source 是從 User 模型中獲取的。
+    只包含必要的欄位：
+    - email
+    - first_name
+    - last_name
+    - phone_number
+    - password
+    - username (可選)
+    - occupation_category
+    - information_source
+    - clinic_id
+    - surgery_date
+    - surgeon_name
+
+    """
+
+    first_name = serializers.CharField(
+        required=True,
+        help_text='名稱'
+    )
+
+    last_name = serializers.CharField(
+        required=True,
+        help_text='姓氏'
+    )
+
+    phone_number = serializers.CharField(
+        required=True,
+        help_text='手機號碼'
+    )
+    
+    occupation_category = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=True,
+        help_text='申請人的職業類別'
+    )
+    
+    information_source = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=True,
+        help_text='怎麼知道LBV認證活動資訊'
+    )
+    
+    clinic_id = serializers.IntegerField(
+        required=True,
+        write_only=True,
+        help_text='主要診所 ID'
+    )
+    
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text='Username (optional, will be auto-generated from email if not provided)'
+    )
+    
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        help_text='Password (write-only, required for user creation)'
+    )
+
+    surgery_date = serializers.DateField(
+        required=True,
+        write_only=True,
+        help_text='手術執行日期'
+    )
+
+    surgeon_name = serializers.CharField(
+        required=True,
+        write_only=True,
+        help_text='手術醫師姓名'
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 動態設置 choices，避免循環導入
+        from users.enums import InformationSource, OccupationCategory
+        self.fields['occupation_category'].choices = OccupationCategory.CHOICES
+        self.fields['information_source'].choices = InformationSource.CHOICES
+
+    class Meta:
+        model = get_user_model()  # 使用 get_user_model() 而不是直接使用 User
+        fields = (
+            'id',
+            'username',
+            'email',
+            'password',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'occupation_category',
+            'information_source',
+            'clinic_id',
+            'surgery_date',
+            'surgeon_name',
+        )
+        read_only_fields = ('id',)
+        extra_kwargs = {
+            'email': {'required': True},
+            'first_name': {'required': True},
+            'last_name': {'required': True},
+            'phone_number': {'required': True},
+            'password': {'write_only': True},
+            'occupation_category': {'required': True},
+            'information_source': {'required': True},
+            'clinic_id': {'required': True},
+            'surgery_date': {'required': True},
+            'surgeon_name': {'required': True},
+        }
+    
+    def validate_clinic_id(self, value):
+        """驗證診所是否存在"""
+        if Clinic is None:
+            return value
+        
+        try:
+            Clinic.objects.get(id=value)
+        except Clinic.DoesNotExist:
+            raise serializers.ValidationError('指定的診所不存在')
+        return value
+
+    def validate(self, attrs):
+        """驗證並提取不屬於 User 模型的欄位"""
+        # 提取 clinic_id, surgery_date, surgeon_name（這些欄位不屬於 User 模型）
+        self.clinic_id = attrs.pop('clinic_id', None)
+        self.surgery_date = attrs.pop('surgery_date', None)
+        self.surgeon_name = attrs.pop('surgeon_name', None)
+        
+        # 手動驗證 email 和 password
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        if not email:
+            raise serializers.ValidationError({'email': 'Email is required.'})
+        try:
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
+            validate_email(email)
+        except ValidationError:
+            raise serializers.ValidationError({'email': 'Invalid email format.'})
+
+        if not password:
+            raise serializers.ValidationError({'password': 'Password is required.'})
+        
+        return attrs
+
+    def create(self, validated_data):
+        """
+        創建用戶並設置密碼
+        """
+        # 從實例變量中獲取 clinic_id, surgery_date, surgeon_name
+        clinic_id = getattr(self, 'clinic_id', None)
+        surgery_date = getattr(self, 'surgery_date', None)
+        surgeon_name = getattr(self, 'surgeon_name', None)
+        
+        # 處理 username（如果未提供，從 email 生成）
+        username = validated_data.get('username', '').strip() if validated_data.get('username') else ''
+        if not username:
+            email = validated_data.get('email', '')
+            if email:
+                base_username = email.split('@')[0]
+                base_username = ''.join(c for c in base_username if c.isalnum() or c == '_')
+                if not base_username:
+                    base_username = 'user'
+                username = base_username
+                counter = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{base_username}_{counter}"
+                    counter += 1
+                    if counter > 1000:
+                        import uuid
+                        username = f"{base_username}_{uuid.uuid4().hex[:8]}"
+                        break
+            else:
+                import uuid
+                username = f"user_{uuid.uuid4().hex[:8]}"
+        validated_data['username'] = username
+        
+        # 提取密碼並設置
+        password = validated_data.pop('password', None)
+        
+        # 創建用戶（此時 validated_data 中已經沒有 clinic_id 了）
+        user = super().create(validated_data)
+        
+        # 設置密碼
+        if password:
+            user.set_password(password)
+            user.save(update_fields=['password'])
+        
+        # 注意：CertificateApplication 的創建和郵件發送邏輯在 views.py 的 create 方法中處理
+        # 這裡只負責創建用戶，不創建證書申請
+        
+        return user
 
 
 class ClientUserSerializer(serializers.ModelSerializer):
@@ -214,6 +431,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             'date_joined',
             'created_at',
             'updated_at',
+            'cert_record_group_id',
         )
         read_only_fields = (
             'id', 
@@ -227,6 +445,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             'role',
             'last_login',
             'date_joined',
+            'cert_record_group_id',
         )
 
 
@@ -267,6 +486,11 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         allow_null=True,
         help_text='手術醫師姓名（可選）'
     )
+    surgery_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text='手術執行日期（可選）'
+    )
     consultant_name = serializers.CharField(
         max_length=255,
         required=False,
@@ -301,8 +525,10 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             'clinic_id',
             'consultation_clinic_id',
             'surgeon_name',
+            'surgery_date',
             'consultant_name',
             'information_source',
+            'cert_record_group_id',
         )
         extra_kwargs = {
             'password': {'write_only': True},
