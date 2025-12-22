@@ -121,3 +121,101 @@ class PasswordChangedConfirmationEmail(email.PasswordChangedConfirmationEmail):
         context['domain'] = domain
 
         return context
+
+
+class RegistrationSuccessEmail(email.BaseEmailMessage):
+    """
+    自定義的註冊成功通知郵件。
+    
+    使用模板: users/templates/email/registration_success.html
+    """
+    template_name = 'email/registration_success.html'
+    subject = '歡迎註冊 - 帳號建立成功'
+    
+    def get_context_data(self):
+        """獲取郵件上下文數據"""
+        context = super().get_context_data()
+        
+        # Parse FRONTEND_URL to extract protocol and domain
+        protocol, domain = parse_frontend_url()
+        context['protocol'] = protocol
+        context['domain'] = domain
+        
+        # 如果有激活 URL，添加到上下文
+        user = context.get('user')
+        if user and not user.is_active:
+            try:
+                from djoser.utils import encode_uid
+                from djoser import utils as djoser_utils
+                # 使用 Djoser 的 token generator
+                uid = encode_uid(user.pk)
+                # 嘗試獲取 token generator
+                try:
+                    from djoser import tokens
+                    token = tokens.default_token_generator.make_token(user)
+                except ImportError:
+                    # 如果無法導入，使用備用方法
+                    from django.contrib.auth.tokens import default_token_generator
+                    token = default_token_generator.make_token(user)
+                
+                activation_url = settings.DJOSER.get('ACTIVATION_URL', 'auth/users/activation/{uid}/{token}')
+                context['activation_url'] = f"{protocol}://{domain}/{activation_url.format(uid=uid, token=token)}"
+            except Exception:
+                # 如果生成失敗，不包含激活 URL
+                context['activation_url'] = None
+        else:
+            context['activation_url'] = None
+        
+        return context
+    
+    def send(self, to, *args, **kwargs):
+        """
+        重寫 send 方法以使用密件副本（BCC）保護個資。
+        
+        Args:
+            to: 收件人列表（將被移到 BCC）
+            *args, **kwargs: 其他參數
+        """
+        # 將收件人移到 BCC，To 欄位設為空
+        # Djoser 的 BaseEmailMessage 使用 EmailMultiAlternatives
+        # 我們需要重寫 send 方法來設置 BCC
+        
+        # 調用父類方法創建郵件對象
+        # BaseEmailMessage 的 send 方法會調用 _get_message() 來創建郵件對象
+        # 我們需要先獲取郵件對象，然後修改其 to 和 bcc 屬性
+        try:
+            # 獲取郵件對象（EmailMultiAlternatives 實例）
+            msg = self._get_message()
+            
+            # 將收件人列表轉換為列表格式
+            bcc_list = to if isinstance(to, list) else [to]
+            
+            # 清空 To 欄位，將收件人移到 BCC
+            msg.to = []
+            msg.bcc = bcc_list
+            
+            # 發送郵件
+            return msg.send()
+        except AttributeError:
+            # 如果 _get_message 不存在，使用備用方法
+            # 直接調用父類的 send，但這不會使用 BCC
+            # 為了安全起見，我們使用 send_mail 直接發送
+            from django.core.mail import send_mail
+            from django.template.loader import render_to_string
+            
+            # 獲取郵件內容
+            context = self.get_context_data()
+            subject = self.subject
+            text_body = render_to_string(self.template_name, context).split('{% endblock text_body %}')[0].split('{% block text_body %}')[-1] if '{% block text_body %}' in render_to_string(self.template_name, context) else ''
+            html_body = render_to_string(self.template_name, context).split('{% endblock html_body %}')[0].split('{% block html_body %}')[-1] if '{% block html_body %}' in render_to_string(self.template_name, context) else ''
+            
+            # 使用 send_mail 發送，並設置 BCC
+            return send_mail(
+                subject=subject,
+                message=text_body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[],
+                bcc=to if isinstance(to, list) else [to],
+                html_message=html_body if html_body else None,
+                fail_silently=False,
+            )

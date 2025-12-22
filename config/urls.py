@@ -6,7 +6,6 @@ The `urlpatterns` list routes URLs to views. For more information please see:
 """
 from django.contrib import admin
 from django.urls import path, include
-from users.views import LogoutView
 from users.oauth_views import oauth_login, GoogleCallback
 from users.twofactor_views import (
     enable_2fa, verify_setup_2fa, disable_2fa, get_2fa_status,
@@ -73,8 +72,8 @@ urlpatterns = [
     path('auth/jwt/refresh/', CustomTokenRefreshView.as_view(), name='jwt-refresh'),
     path('auth/jwt/verify/', CustomTokenVerifyView.as_view(), name='jwt-verify'),
 
-    # Custom logout endpoint with token blacklisting
-    path('auth/logout/', LogoutView.as_view(), name='logout'),
+    # Custom logout endpoint with token blacklisting (defined in users.urls)
+    # LogoutView is now imported in users.urls, accessible via /auth/logout/
 
     # Google OAuth endpoints
     path('auth/google/', oauth_login, name='google_login'),

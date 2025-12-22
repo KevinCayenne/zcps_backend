@@ -707,12 +707,13 @@ class SubmitCertificateApplicationView(APIView):
         
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False,
         )
@@ -1642,12 +1643,13 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         # 純文字版本（用於不支持 HTML 的 email 客戶端）
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False
         )
@@ -2177,8 +2179,8 @@ def send_certificate_issue_notification_email(application):
     # 構建查看證書的連結（如果有證書群組 ID）
     certificate_url = None
     if application.certificate_group_id:
-        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-        certificate_url = f"{frontend_url}/certificates/{application.certificate_group_id}"
+        frontend_url = getattr(settings, 'CLIENT_FRONTEND_URL', 'http://localhost:3001')
+        certificate_url = f"{frontend_url}"
     
     # 使用 HTML 模板
     html_message = f"""
@@ -2243,12 +2245,13 @@ def send_certificate_issue_notification_email(application):
 此為系統自動發送，請勿回覆此郵件。
     """
     
-    # 發送 email
+    # 發送 email（使用密件副本保護個資）
     send_mail(
         subject=subject,
         message=plain_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[applicant_email],
+        recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+        bcc=[applicant_email],  # 使用密件副本保護個資
         html_message=html_message,
         fail_silently=False,
     )

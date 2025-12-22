@@ -105,12 +105,13 @@ def _send_cancellation_email(application):
     # 純文字版本（用於不支持 HTML 的 email 客戶端）
     plain_message = strip_tags(html_message)
     
-    # 發送 email
+    # 發送 email（使用密件副本保護個資）
     send_mail(
         subject=subject,
         message=plain_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[applicant_email],
+        recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+        bcc=[applicant_email],  # 使用密件副本保護個資
         html_message=html_message,
         fail_silently=False
     )

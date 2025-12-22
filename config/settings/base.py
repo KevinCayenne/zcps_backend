@@ -35,6 +35,8 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 CLIENT_FRONTEND_URL = os.environ.get('CLIENT_FRONTEND_URL', 'http://localhost:3001')
 
+SITE_NAME = os.environ.get('SITE_NAME', '系統')
+
 # Certificate API Configuration
 CERTIFICATE_API_BASE_URL = os.environ.get('CERTIFICATE_API_BASE_URL', 'https://tc-platform-service.turingcerts.com')
 CERTIFICATE_API_KEY = os.environ.get('CERTIFICATE_API_KEY', '')

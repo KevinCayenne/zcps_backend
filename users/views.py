@@ -207,7 +207,8 @@ class SendRegistrationOTPView(APIView):
                 subject,
                 message,
                 settings.DEFAULT_FROM_EMAIL,
-                [email],
+                [],  # 使用空列表，避免在 To 欄位顯示收件人
+                bcc=[email],  # 使用密件副本保護個資
                 fail_silently=False,
             )
         except Exception as e:
@@ -687,115 +688,112 @@ class CustomUserViewSet(UserViewSet):
           使用 SimpleUserCreateSerializer
         - 否則使用 UserCreateSerializer（包含完整的證書申請欄位）
         """
-        # 檢查是否應該使用簡化的 serializer
-        request_data = request.data
-        simple_fields = {
-            'email', 
-            'password', 
-            'username', 
-            'occupation_category', 
-            'information_source', 
-            'clinic_id', 
-            'first_name', 
-            'last_name', 
-            'phone_number',
-            'surgery_date',
-            'surgeon_name',
-        }
-        has_only_simple_fields = set(request_data.keys()).issubset(simple_fields)
+        import logging
+        from django.db import transaction, IntegrityError
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from rest_framework.exceptions import ValidationError as DRFValidationError
         
-        if has_only_simple_fields:
-            print("has_only_simple_fields: ", has_only_simple_fields)
-            from users.serializers import SimpleUserCreateSerializer
-            serializer = SimpleUserCreateSerializer(data=request.data)
-        else:
-            serializer = self.get_serializer(data=request.data)
+        logger = logging.getLogger(__name__)
         
-        serializer.is_valid(raise_exception=True)
-
-        print("serializer.validated_data: ", serializer.validated_data)
-        
-        # 提取證書申請相關的欄位（這些欄位不會被保存到 User 模型）
-        # 注意：occupation_category 現在是 User 模型的欄位，不需要 pop
-        certificate_fields = {
-            'clinic_id': serializer.validated_data.pop('clinic_id', None),
-            'surgeon_name': serializer.validated_data.pop('surgeon_name', None),
-            'surgery_date': serializer.validated_data.pop('surgery_date', None),
-        }
-
-        print("certificate_fields: ", certificate_fields)
-
-        # return Response(
-        #     {
-        #         'message': 'certificate_fields: ' + str(certificate_fields)
-        #     },
-        #     status=status.HTTP_400_BAD_REQUEST
-        # )
-
-        user = serializer.save()
-        
-        # 如果提供了證書申請相關欄位，使用 SubmitCertificateApplicationView 的邏輯創建 CertificateApplication
-        if certificate_fields.get('clinic_id'):
-            from clinic.models import CertificateApplication, Clinic
-            from django.db import transaction
-            from django.core.mail import send_mail
-            from django.utils.html import strip_tags
-            from django.conf import settings
-            import logging
+        try:
+            # 檢查是否應該使用簡化的 serializer
+            request_data = request.data
+            simple_fields = {
+                'email', 
+                'password', 
+                'username', 
+                'occupation_category', 
+                'information_source', 
+                'clinic_id', 
+                'first_name', 
+                'last_name', 
+                'phone_number',
+                'surgery_date',
+                'surgeon_name',
+            }
+            has_only_simple_fields = set(request_data.keys()).issubset(simple_fields)
             
-            logger = logging.getLogger(__name__)
+            if has_only_simple_fields:
+                from users.serializers import SimpleUserCreateSerializer
+                serializer = SimpleUserCreateSerializer(data=request.data)
+            else:
+                serializer = self.get_serializer(data=request.data)
+            
+            # 驗證數據
+            try:
+                serializer.is_valid(raise_exception=True)
+            except DRFValidationError as e:
+                # 返回 DRF 的驗證錯誤（格式已整理好）
+                return Response(
+                    {
+                        'error': '資料驗證失敗',
+                        'details': e.detail
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 提取證書申請相關的欄位
+            # 對於 SimpleUserCreateSerializer，這些欄位已經在 validate() 中被 pop 到實例變量中
+            # 對於 UserCreateSerializer，這些欄位還在 validated_data 中
+            if hasattr(serializer, 'clinic_id'):
+                # SimpleUserCreateSerializer：從實例變量獲取
+                certificate_fields = {
+                    'clinic_id': getattr(serializer, 'clinic_id', None),
+                    'surgeon_name': getattr(serializer, 'surgeon_name', None),
+                    'surgery_date': getattr(serializer, 'surgery_date', None),
+                }
+            else:
+                # UserCreateSerializer：從 validated_data 中 pop
+                certificate_fields = {
+                    'clinic_id': serializer.validated_data.pop('clinic_id', None),
+                    'surgeon_name': serializer.validated_data.pop('surgeon_name', None),
+                    'surgery_date': serializer.validated_data.pop('surgery_date', None),
+                }
+
+            # 使用事務確保用戶創建和證書申請創建要麼全部成功，要麼全部回滾
+            user = None
+            application = None
+            token = None
             
             try:
-                # 獲取診所
-                clinic = Clinic.objects.get(id=certificate_fields['clinic_id'])
-                print("clinic: ", clinic)
-                print("clinic.email: ", clinic.email)
-
-                # 檢查診所是否有 email（與 SubmitCertificateApplicationView 相同）
-                if not clinic.email:
-                    logger.warning(f"診所 {clinic.id} 未設置電子郵件地址，無法發送驗證 email")
-                    # 不阻止用戶創建，但記錄警告
-
-                    return Response(
-                        {
-                            'message': '診所未設置電子郵件地址，無法發送驗證 email'
-                        },
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # 獲取諮詢診所（如果提供）
-                consultation_clinic = None
-                if certificate_fields.get('consultation_clinic_id'):
-                    try:
-                        consultation_clinic = Clinic.objects.get(id=certificate_fields['consultation_clinic_id'])
-                    except Clinic.DoesNotExist:
-                        logger.warning(f"諮詢診所不存在: consultation_clinic_id={certificate_fields.get('consultation_clinic_id')}")
-                        # 不阻止用戶創建，但記錄警告
-
-                        return Response(
-                            {
-                                'message': '諮詢診所不存在，無法發送驗證 email'
-                            },
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
-                
-                # 構建 certificate_data（包含用戶的 email）
-                certificate_data = {
-                    'email': user.email,
-                }
-                
-                # 如果有其他證書相關資料，也加入
-                if certificate_fields.get('surgeon_name'):
-                    certificate_data['surgeon_name'] = certificate_fields['surgeon_name']
-                if certificate_fields.get('surgery_date'):
-                    certificate_data['surgery_date'] = certificate_fields['surgery_date'].strftime('%Y-%m-%d') if hasattr(certificate_fields['surgery_date'], 'strftime') else str(certificate_fields['surgery_date'])
-                
-                # 使用事務確保數據一致性（使用與 SubmitCertificateApplicationView 相同的邏輯）
-                application = None
-                token = None
-                try:
-                    with transaction.atomic():
-                        # 創建證書申請實例（先不保存）
+                with transaction.atomic():
+                    # 創建用戶（在事務內）
+                    user = serializer.save()
+                    
+                    # 如果提供了證書申請相關欄位，在同一事務中創建 CertificateApplication
+                    if certificate_fields.get('clinic_id'):
+                        from clinic.models import CertificateApplication, Clinic
+                        
+                        # 獲取診所
+                        try:
+                            clinic = Clinic.objects.get(id=certificate_fields['clinic_id'])
+                        except Clinic.DoesNotExist:
+                            raise ValueError(f'指定的診所不存在 (ID: {certificate_fields.get("clinic_id")})')
+                        
+                        # 檢查診所是否有 email
+                        if not clinic.email:
+                            raise ValueError('診所未設置電子郵件地址，無法發送驗證 email')
+                        
+                        # 獲取諮詢診所（如果提供）
+                        consultation_clinic = None
+                        if certificate_fields.get('consultation_clinic_id'):
+                            try:
+                                consultation_clinic = Clinic.objects.get(id=certificate_fields['consultation_clinic_id'])
+                            except Clinic.DoesNotExist:
+                                raise ValueError(f'指定的諮詢診所不存在 (ID: {certificate_fields.get("consultation_clinic_id")})')
+                        
+                        # 構建 certificate_data（包含用戶的 email）
+                        certificate_data = {
+                            'email': user.email,
+                        }
+                        
+                        # 如果有其他證書相關資料，也加入
+                        if certificate_fields.get('surgeon_name'):
+                            certificate_data['surgeon_name'] = certificate_fields['surgeon_name']
+                        if certificate_fields.get('surgery_date'):
+                            certificate_data['surgery_date'] = certificate_fields['surgery_date'].strftime('%Y-%m-%d') if hasattr(certificate_fields['surgery_date'], 'strftime') else str(certificate_fields['surgery_date'])
+                        
+                        # 創建證書申請實例（在事務內）
                         application = CertificateApplication(
                             user=user,
                             clinic=clinic,
@@ -808,50 +806,118 @@ class CustomUserViewSet(UserViewSet):
                         # 生成驗證 token（這會設置 verification_token 和 token_expires_at）
                         token = application.generate_verification_token()
                         
-                        # 保存申請
+                        # 保存申請（在事務內）
                         application.save()
-                except Exception as e:
-                    logger.error(f"Failed to create certificate application for user {user.id}: {e}", exc_info=True)
-                    # 不阻止用戶創建，但記錄錯誤
-                    application = None
-                    token = None
-
-                    return Response(
-                        {
-                            'message': '創建證書申請失敗，請稍後再試'
-                        },
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-                
-                # 發送驗證 email（在事務外，避免影響數據保存，與 SubmitCertificateApplicationView 相同）
-                if application and token and clinic.email:
-                    try:
-                        self._send_certificate_verification_email(application, token)
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to send verification email for application {application.id}: {e}",
-                            exc_info=True
-                        )
-                        # 即使發送失敗，也繼續（可以稍後重試或手動發送）
-                
-            except Clinic.DoesNotExist:
-                # 如果主要診所不存在，記錄錯誤但不阻止用戶創建
-                logger.error(f"診所不存在: clinic_id={certificate_fields.get('clinic_id')}")
-            except Exception as e:
-                # 其他錯誤也不阻止用戶創建
-                logger.error(f"創建證書申請時發生錯誤: {e}", exc_info=True)
-
+                        
+            except IntegrityError as e:
+                logger.error(f"Failed to create user due to database integrity error: {e}", exc_info=True)
+                error_message = str(e)
                 return Response(
                     {
-                        'message': '創建證書申請失敗，請稍後再試'
+                        'error': '創建用戶失敗',
+                        'message': error_message
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except DjangoValidationError as e:
+                logger.error(f"Failed to create user due to validation error: {e}", exc_info=True)
+                return Response(
+                    {
+                        'error': '創建用戶失敗',
+                        'message': '資料驗證失敗',
+                        'details': e.message_dict if hasattr(e, 'message_dict') else str(e)
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except ValueError as e:
+                # 處理業務邏輯錯誤（診所不存在、email 未設置等）
+                logger.error(f"Business logic error: {e}", exc_info=True)
+                return Response(
+                    {
+                        'error': '創建失敗',
+                        'message': str(e)
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                logger.error(f"Failed to create user or certificate application: {e}", exc_info=True)
+                return Response(
+                    {
+                        'error': '創建失敗',
+                        'message': '系統錯誤，請稍後再試'
                     },
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-        
-        return Response({
-            'message': '用戶創建成功',
-            'data': serializer.data
-        }, status=status.HTTP_201_CREATED)
+            
+            # 確保用戶已創建
+            if not user:
+                return Response(
+                    {
+                        'error': '創建失敗',
+                        'message': '用戶創建失敗，請稍後再試'
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # 發送郵件（在事務外，避免影響數據保存）
+            # 如果提供了證書申請相關欄位，發送證書驗證郵件
+            if certificate_fields.get('clinic_id') and application and token:
+                from clinic.models import Clinic
+                try:
+                    clinic = Clinic.objects.get(id=certificate_fields['clinic_id'])
+                    if clinic.email:
+                        try:
+                            self._send_certificate_verification_email(application, token)
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to send verification email for application {application.id}: {e}",
+                                exc_info=True
+                            )
+                            # 即使發送失敗，也繼續（可以稍後重試或手動發送）
+                            # 不返回錯誤，因為用戶和證書申請已經創建成功
+                except Exception as e:
+                    logger.error(f"Failed to send certificate verification email: {e}", exc_info=True)
+            
+            # 發送註冊成功通知郵件（使用自定義模板）
+            try:
+                from users.email import RegistrationSuccessEmail
+                from django.contrib.sites.models import Site
+                
+                # 獲取站點名稱
+                try:
+                    site = Site.objects.get_current()
+                    site_name = site.name
+                except:
+                    site_name = getattr(settings, 'SITE_NAME', '系統')
+                
+                # 創建並發送註冊成功郵件
+                registration_email = RegistrationSuccessEmail(request, {
+                    'user': user,
+                    'site_name': site_name,
+                })
+                registration_email.send([user.email])
+                
+                logger.info(f"Registration success email sent to {user.email} for user {user.id}")
+            except Exception as e:
+                logger.error(f"Failed to send registration success email for user {user.id}: {e}", exc_info=True)
+                # 不阻止響應，因為用戶已經創建成功
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response({
+                'message': '用戶創建成功',
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED, headers=headers)
+            
+        except Exception as e:
+            # 捕獲所有未預期的錯誤
+            logger.error(f"Unexpected error in user creation: {e}", exc_info=True)
+            return Response(
+                {
+                    'error': '系統錯誤',
+                    'message': '創建用戶時發生未預期的錯誤，請稍後再試'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @extend_schema(
         tags=['User Management'],
@@ -1397,12 +1463,13 @@ class CustomUserViewSet(UserViewSet):
         
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False,
         )

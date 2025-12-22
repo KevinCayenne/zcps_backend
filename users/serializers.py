@@ -267,11 +267,13 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
 
     surgery_date = serializers.DateField(
         required=True,
+        write_only=True,
         help_text='手術執行日期'
     )
 
     surgeon_name = serializers.CharField(
         required=True,
+        write_only=True,
         help_text='手術醫師姓名'
     )
 
@@ -323,12 +325,39 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('指定的診所不存在')
         return value
 
+    def validate(self, attrs):
+        """驗證並提取不屬於 User 模型的欄位"""
+        # 提取 clinic_id, surgery_date, surgeon_name（這些欄位不屬於 User 模型）
+        self.clinic_id = attrs.pop('clinic_id', None)
+        self.surgery_date = attrs.pop('surgery_date', None)
+        self.surgeon_name = attrs.pop('surgeon_name', None)
+        
+        # 手動驗證 email 和 password
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        if not email:
+            raise serializers.ValidationError({'email': 'Email is required.'})
+        try:
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
+            validate_email(email)
+        except ValidationError:
+            raise serializers.ValidationError({'email': 'Invalid email format.'})
+
+        if not password:
+            raise serializers.ValidationError({'password': 'Password is required.'})
+        
+        return attrs
+
     def create(self, validated_data):
         """
         創建用戶並設置密碼
         """
-        # 從實例變量中獲取 clinic_id
+        # 從實例變量中獲取 clinic_id, surgery_date, surgeon_name
         clinic_id = getattr(self, 'clinic_id', None)
+        surgery_date = getattr(self, 'surgery_date', None)
+        surgeon_name = getattr(self, 'surgeon_name', None)
         
         # 處理 username（如果未提供，從 email 生成）
         username = validated_data.get('username', '').strip() if validated_data.get('username') else ''
@@ -364,37 +393,8 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             user.set_password(password)
             user.save(update_fields=['password'])
         
-        # 如果提供了 clinic_id，創建證書申請
-        if clinic_id:
-            from clinic.models import CertificateApplication, Clinic
-            from django.utils import timezone
-            from datetime import timedelta
-            import secrets
-            
-            try:
-                clinic = Clinic.objects.get(id=clinic_id)
-                
-                # 生成驗證 token
-                verification_token = secrets.token_urlsafe(32)
-                token_expires_at = timezone.now() + timedelta(days=7)
-                
-                # 創建證書申請
-                # 注意：information_source 已經保存在 User 模型中，不需要傳給 CertificateApplication
-                CertificateApplication.objects.create(
-                    user=user,
-                    clinic=clinic,
-                    consultation_clinic=None,
-                    surgeon_name='',
-                    surgery_date=None,
-                    consultant_name='',
-                    verification_token=verification_token,
-                    token_expires_at=token_expires_at,
-                    certificate_data={},
-                )
-            except Clinic.DoesNotExist:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"診所不存在: clinic_id={clinic_id}")
+        # 注意：CertificateApplication 的創建和郵件發送邏輯在 views.py 的 create 方法中處理
+        # 這裡只負責創建用戶，不創建證書申請
         
         return user
 
