@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils.html import strip_tags
 from rest_framework import status, serializers, viewsets, filters
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
@@ -171,7 +171,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Clinic.objects.all().order_by('-create_time')
     serializer_class = ClinicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [
         DjangoFilterBackend,
         filters.OrderingFilter,
@@ -707,12 +707,13 @@ class SubmitCertificateApplicationView(APIView):
         
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False,
         )
@@ -1642,12 +1643,13 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         # 純文字版本（用於不支持 HTML 的 email 客戶端）
         plain_message = strip_tags(html_message)
         
-        # 發送 email
+        # 發送 email（使用密件副本保護個資）
         send_mail(
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[application.clinic.email],
+            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            bcc=[application.clinic.email],  # 使用密件副本保護個資
             html_message=html_message,
             fail_silently=False
         )
@@ -1760,7 +1762,7 @@ class IssueCertificateView(APIView):
         - `name`: 證書群組名稱（僅在創建新群組時使用，默認：證書群組_{templateId}）
         - `certificateData`: 證書資料（如果未提供，將使用申請時提交的資料）
         - `isDownloadButtonEnabled`: 是否啟用下載按鈕（默認：true）
-        - `skipSendingNotification`: 跳過發送通知（默認：false）
+        - `skipSendingNotification`: 跳過發送通知（默認：True）
         - `setVisibilityPublic`: 設定為公開（默認：True）
         - `certRecordRemark`: 證書備註
         - `pdfProtectionPassword`: PDF 保護密碼
@@ -1804,7 +1806,7 @@ class IssueCertificateView(APIView):
                     "application_id": 1,
                     "name": "證書群組名稱",
                     "isDownloadButtonEnabled": True,
-                    "skipSendingNotification": False,
+                    "skipSendingNotification": True,
                     "setVisibilityPublic": True,
                     "certificateData": {
                         "email": "member@example.com",
@@ -1985,7 +1987,7 @@ class IssueCertificateView(APIView):
             'certsData': certs_data,
             'certPassword': cert_password,
             'isDownloadButtonEnabled': request.data.get('isDownloadButtonEnabled', True),
-            'skipSendingNotification': request.data.get('skipSendingNotification', False),
+            'skipSendingNotification': request.data.get('skipSendingNotification', True),
             'setVisibilityPublic': request.data.get('setVisibilityPublic', True),
             'certRecordRemark': request.data.get('certRecordRemark', ''),
             'pdfProtectionPassword': request.data.get('pdfProtectionPassword', ''),
@@ -2120,6 +2122,16 @@ class IssueCertificateView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+
+        # 步驟 7: 發送證書發放通知 (先實作Email通知)
+        try:
+            send_certificate_issue_notification_email(application)
+        except Exception as e:
+            logger.error(
+                f"Failed to send certificate issue notification email for application {application.id}: {e}",
+                exc_info=True
+            )
+            # 即使發送失敗，也繼續返回成功（證書已經發放）
         
         return Response(
             {
@@ -2132,6 +2144,123 @@ class IssueCertificateView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+def send_certificate_issue_notification_email(application):
+    """
+    發送證書發放通知 email 給申請人
+    
+    Args:
+        application: CertificateApplication 實例（必須已發證）
+        
+    Raises:
+        Exception: 如果發送失敗
+    """
+    # 獲取申請人 email（優先從 certificate_data，否則從 user）
+    applicant_email = None
+    if application.certificate_data and isinstance(application.certificate_data, dict):
+        applicant_email = application.certificate_data.get('email')
+    
+    if not applicant_email and application.user:
+        applicant_email = application.user.email
+    
+    if not applicant_email:
+        raise ValueError(f"Application {application.id} does not have applicant email address")
+    
+    # 構建 email 內容
+    subject = '證書發放通知 - 您的證書已成功發放'
+    
+    # 獲取申請人資訊
+    applicant_name = application.get_applicant_name() or '申請人'
+    clinic_name = application.clinic.name if application.clinic else '診所'
+    certificate_number = application.certificate_number or '待生成'
+    issued_at = application.issued_at.strftime('%Y-%m-%d %H:%M:%S') if application.issued_at else '剛剛'
+    
+    # 構建查看證書的連結（如果有證書群組 ID）
+    certificate_url = None
+    if application.certificate_group_id:
+        frontend_url = getattr(settings, 'CLIENT_FRONTEND_URL', 'http://localhost:3001')
+        certificate_url = f"{frontend_url}"
+    
+    # 使用 HTML 模板
+    html_message = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #4CAF50; border-bottom: 3px solid #4CAF50; padding-bottom: 10px;">證書發放通知</h2>
+            <p>親愛的 {applicant_name}，</p>
+            <p>恭喜！您的證書已成功發放。</p>
+            
+            <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #333;">證書資訊</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="margin: 10px 0;"><strong>申請編號：</strong>#{application.id}</li>
+                    <li style="margin: 10px 0;"><strong>證書序號：</strong>{certificate_number}</li>
+                    <li style="margin: 10px 0;"><strong>診所名稱：</strong>{clinic_name}</li>
+                    {f'<li style="margin: 10px 0;"><strong>手術醫師：</strong>{application.surgeon_name}</li>' if application.surgeon_name else ''}
+                    {f'<li style="margin: 10px 0;"><strong>手術日期：</strong>{application.surgery_date.strftime("%Y-%m-%d")}</li>' if application.surgery_date else ''}
+                    <li style="margin: 10px 0;"><strong>發放時間：</strong>{issued_at}</li>
+                </ul>
+            </div>
+            
+            {f'''
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{certificate_url}" style="background-color: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">查看證書</a>
+            </div>
+            <p style="text-align: center; color: #666; font-size: 14px;">
+                或複製以下連結到瀏覽器：<br>
+                <a href="{certificate_url}" style="color: #4CAF50; word-break: break-all;">{certificate_url}</a>
+            </p>
+            ''' if certificate_url else '<p style="color: #666; font-size: 14px;">證書正在處理中，請稍後查看。</p>'}
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
+                <p>如有任何疑問，請聯繫相關診所或系統管理員。</p>
+                <p style="margin-top: 20px;"><small>此為系統自動發送，請勿回覆此郵件。</small></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # 純文字版本（用於不支持 HTML 的 email 客戶端）
+    plain_message = f"""
+證書發放通知
+
+親愛的 {applicant_name}，
+
+恭喜！您的證書已成功發放。
+
+證書資訊：
+- 申請編號：#{application.id}
+- 證書序號：{certificate_number}
+- 診所名稱：{clinic_name}
+{f'- 手術醫師：{application.surgeon_name}' if application.surgeon_name else ''}
+{f'- 手術日期：{application.surgery_date.strftime("%Y-%m-%d")}' if application.surgery_date else ''}
+- 發放時間：{issued_at}
+
+{f'查看證書：{certificate_url}' if certificate_url else '證書正在處理中，請稍後查看。'}
+
+如有任何疑問，請聯繫相關診所或系統管理員。
+
+此為系統自動發送，請勿回覆此郵件。
+    """
+    
+    # 發送 email（使用密件副本保護個資）
+    send_mail(
+        subject=subject,
+        message=plain_message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+        bcc=[applicant_email],  # 使用密件副本保護個資
+        html_message=html_message,
+        fail_silently=False,
+    )
+    
+    logger.info(
+        f"Certificate issue notification email sent successfully to {applicant_email} "
+        f"for application {application.id} (user: {application.user.id if application.user else 'N/A'}, "
+        f"clinic: {application.clinic.id if application.clinic else 'N/A'})"
+    )
 
 
 class DoctorViewSet(viewsets.ModelViewSet):

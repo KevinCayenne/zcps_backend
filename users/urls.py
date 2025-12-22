@@ -6,9 +6,17 @@ functionality for password management operations.
 """
 
 from django.urls import path, re_path
-from .views import CustomUserViewSet
+from .views import CustomUserViewSet, VerifyEmailView, SendRegistrationOTPView, VerifyRegistrationOTPView, LogoutView
 
 urlpatterns = [
+    # Email verification (must come before users/)
+    path('users/verify-email/', VerifyEmailView.as_view(), name='user-verify-email'),
+    path('users/send-registration-otp/', SendRegistrationOTPView.as_view(), name='user-send-registration-otp'),
+    path('users/verify-registration-otp/', VerifyRegistrationOTPView.as_view(), name='user-verify-registration-otp'),
+    
+    # Logout endpoint
+    path('logout/', LogoutView.as_view(), name='logout'),
+    
     # Password management (must come before users/me/)
     path('users/set_password/', CustomUserViewSet.as_view({'post': 'set_password'}), name='user-set-password'),
     path('users/reset_password/', CustomUserViewSet.as_view({'post': 'reset_password'}), name='user-reset-password'),

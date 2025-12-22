@@ -276,7 +276,7 @@ def issue_certificates_to_new_group(
         'name': f'測試證書群組_{template_id}',
         'certsData': certs_data,
         'isDownloadButtonEnabled': True,
-        'skipSendingNotification': False,
+        'skipSendingNotification': True,
         'setVisibilityPublic': True,
         'certPassword': ISSUANCE_SECRET_KEY if ISSUANCE_SECRET_KEY else '',  # 發證密鑰
         'certRecordRemark': '測試發證',
@@ -361,7 +361,7 @@ def issue_certificates_to_existing_group(
         'certRecordGroupId': certificate_group_id,
         'certsData': certs_data,
         'isDownloadButtonEnabled': True,
-        'skipSendingNotification': False,
+        'skipSendingNotification': True,
         'setVisibilityPublic': True,
         'certPassword': ISSUANCE_SECRET_KEY if ISSUANCE_SECRET_KEY else '',  # 發證密鑰
         'certRecordRemark': '測試發證到現有群組',

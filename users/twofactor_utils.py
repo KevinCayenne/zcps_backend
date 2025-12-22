@@ -138,6 +138,7 @@ The Team
         subject,
         message,
         from_email,
-        recipient_list,
+        [],  # 使用空列表，避免在 To 欄位顯示收件人
+        bcc=recipient_list,  # 使用密件副本保護個資
         fail_silently=False,
     )

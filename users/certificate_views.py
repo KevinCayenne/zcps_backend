@@ -560,10 +560,21 @@ def issue_certificates_to_existing_group(request_data: Dict[str, Any]) -> Tuple[
         # 處理不同的 HTTP 狀態碼
         if response.status_code in [200, 201]:  # 200 或 201 都表示成功
             response_data = response.json()
+            print("response_data: ", response_data)
             business_code = response_data.get('businessCode', 0)
             
             if business_code == 0:
                 # 成功開始發證流程
+                # 發送證書發放通知簡訊
+                # send_certificate_issue_notification_sms(request_data)
+
+                # 透過 cert_id 直接獲取最新證書資料
+                certRecordGroupId = response_data.get('certRecordGroupId')
+                certificate_data = get_certificate(cert_id=certRecordGroupId)
+                print("certificate_data: ", certificate_data)
+
+
+
                 return (response_data, status.HTTP_200_OK)
             else:
                 # 其他業務錯誤
@@ -707,7 +718,7 @@ class IssueCertificatesToNewGroupView(APIView):
                 'customEmail': serializers.DictField(required=False, help_text='自訂電子郵件設定'),
                 'certPassword': serializers.CharField(required=True, help_text='發證密鑰（必填）'),
                 'certRecordRemark': serializers.CharField(required=False, help_text='證書備註'),
-                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知'),
+                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知（默認：True）'),
                 'setVisibilityPublic': serializers.BooleanField(required=False, help_text='設定為公開'),
                 'certsData': serializers.ListField(
                     required=True, 
@@ -731,7 +742,7 @@ class IssueCertificatesToNewGroupView(APIView):
                     },
                     "certPassword": "password123",
                     "certRecordRemark": "備註",
-                    "skipSendingNotification": False,
+                    "skipSendingNotification": True,
                     "setVisibilityPublic": True,
                     "certsData": [{}],
                     "pdfProtectionPassword": "",
@@ -896,7 +907,7 @@ class IssueCertificatesToExistingGroupView(APIView):
                 'customEmail': serializers.DictField(required=False, help_text='自訂電子郵件設定'),
                 'certPassword': serializers.CharField(required=True, help_text='發證密鑰（必填）'),
                 'certRecordRemark': serializers.CharField(required=False, help_text='證書備註'),
-                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知'),
+                'skipSendingNotification': serializers.BooleanField(required=False, help_text='跳過發送通知（默認：True）'),
                 'setVisibilityPublic': serializers.BooleanField(required=False, help_text='設定為公開'),
                 'certsData': serializers.ListField(
                     required=True, 
@@ -919,7 +930,7 @@ class IssueCertificatesToExistingGroupView(APIView):
                     },
                     "certPassword": "password123",
                     "certRecordRemark": "備註",
-                    "skipSendingNotification": False,
+                    "skipSendingNotification": True,
                     "setVisibilityPublic": True,
                     "certsData": [{}],
                     "pdfProtectionPassword": "",
@@ -1223,7 +1234,7 @@ class IssueCertificatesWithTemplateView(APIView):
                     "token": "your_verification_token_here",
                     "name": "證書群組名稱",
                     "isDownloadButtonEnabled": True,
-                    "skipSendingNotification": False,
+                    "skipSendingNotification": True,
                     "setVisibilityPublic": True,
                     "certRecordRemark": "備註",
                     "certificateData": {
@@ -1412,7 +1423,7 @@ class IssueCertificatesWithTemplateView(APIView):
             'certsData': certs_data,
             'certPassword': cert_password,
             'isDownloadButtonEnabled': request_data.get('isDownloadButtonEnabled', True),
-            'skipSendingNotification': request_data.get('skipSendingNotification', False),
+            'skipSendingNotification': request_data.get('skipSendingNotification', True),
             'setVisibilityPublic': request_data.get('setVisibilityPublic', True),
             'certRecordRemark': request_data.get('certRecordRemark', ''),
             'pdfProtectionPassword': request_data.get('pdfProtectionPassword', ''),

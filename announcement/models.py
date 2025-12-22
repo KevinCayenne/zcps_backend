@@ -6,7 +6,7 @@ from users.models import User
 class Announcement(BaseModel):
     title = models.CharField(max_length=255, verbose_name=_('標題'))
     content = models.JSONField(default=dict, verbose_name=_('內容'))
-    is_active = models.BooleanField(default=True, verbose_name=_('是否發布'))
+    is_active = models.BooleanField(default=False, verbose_name=_('是否發布'))
     active_start_time = models.DateTimeField(blank=True, null=True, verbose_name=_('生效時間'))
     active_end_time = models.DateTimeField(blank=True, null=True, verbose_name=_('失效時間'))
     active_member = models.ManyToManyField(User, blank=True, verbose_name=_('發布人'))

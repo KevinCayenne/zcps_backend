@@ -262,3 +262,71 @@ class TwoFactorCode(models.Model):
             and self.expires_at > timezone.now()
             and self.failed_attempts < max_attempts
         )
+
+
+class EmailVerificationOTP(models.Model):
+    """
+    註冊前的 Email OTP 驗證模型
+    
+    用於在用戶註冊前驗證 email 是否有效。
+    """
+    
+    email = models.EmailField(
+        verbose_name=_('Email 地址'),
+        help_text='要驗證的 email 地址',
+        db_index=True
+    )
+    
+    code = models.CharField(
+        verbose_name=_('驗證碼'),
+        max_length=6,
+        help_text='6 位數驗證碼'
+    )
+    
+    created_at = models.DateTimeField(
+        verbose_name=_('建立時間'),
+        auto_now_add=True,
+        help_text='驗證碼生成時間'
+    )
+    
+    expires_at = models.DateTimeField(
+        verbose_name=_('過期時間'),
+        help_text='驗證碼過期時間',
+        db_index=True
+    )
+    
+    is_used = models.BooleanField(
+        verbose_name=_('是否已使用'),
+        default=False,
+        help_text='驗證碼是否已被使用',
+        db_index=True
+    )
+    
+    failed_attempts = models.IntegerField(
+        verbose_name=_('失敗驗證次數'),
+        default=0,
+        help_text='失敗驗證次數（超過 5 次需重新發送）'
+    )
+    
+    class Meta:
+        verbose_name = _('Email 驗證 OTP')
+        verbose_name_plural = _('Email 驗證 OTP')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', 'is_used']),
+            models.Index(fields=['email', 'expires_at']),
+        ]
+    
+    def __str__(self):
+        return f'{self.email} - {self.code}'
+    
+    def is_valid(self):
+        """
+        檢查驗證碼是否有效（未使用且未過期）
+        """
+        from django.utils import timezone
+        return (
+            not self.is_used and
+            timezone.now() <= self.expires_at and
+            self.failed_attempts < 5
+        )
