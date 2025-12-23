@@ -28,6 +28,7 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # Allowed hosts should be configured via environment variable in production
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+CORS_ORIGIN_WHITELIST = os.environ.get('CORS_ORIGIN_WHITELIST', '').split(',')
 
 if not DATABASE_URL:
     raise ValueError(
