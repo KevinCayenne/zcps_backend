@@ -233,19 +233,53 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
             logger.warning(f"No valid email addresses found for clients")
             return
         
-        # 發送 email（使用密件副本保護個資）
-        send_mail(
-            subject=subject,
-            message=plain_message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
-            bcc=recipient_list,  # 使用密件副本保護個資
-            html_message=html_message,
-            fail_silently=False,
-        )
+        # 分批發送郵件，每批最多50個收件人，以保護個資並避免性能問題
+        # 每批單獨發送，這樣每個收件人只能看到同一批的其他收件人（最多49個）
+        # 如果完全不想讓收件人看到其他人，可以將 BATCH_SIZE 設為 1
+        from django.core.mail import EmailMultiAlternatives, get_connection
+        BATCH_SIZE = 50  # 每批最多50個收件人，可以根據需要調整
+        
+        success_count = 0
+        failed_count = 0
+        total_batches = (len(recipient_list) + BATCH_SIZE - 1) // BATCH_SIZE
+        
+        # 重用郵件連接以提高效率
+        connection = get_connection()
+        
+        for batch_num in range(0, len(recipient_list), BATCH_SIZE):
+            batch_recipients = recipient_list[batch_num:batch_num + BATCH_SIZE]
+            batch_num_display = (batch_num // BATCH_SIZE) + 1
+            
+            try:
+                # 為每批收件人創建一封郵件
+                email_msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=plain_message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[],  # 使用空列表，避免在 To 欄位顯示收件人
+                    bcc=batch_recipients,  # 每批收件人使用密件副本
+                    connection=connection,  # 重用連接
+                )
+                email_msg.attach_alternative(html_message, "text/html")
+                email_msg.send(fail_silently=False)
+                success_count += len(batch_recipients)
+                logger.debug(
+                    f"Announcement email batch {batch_num_display}/{total_batches} sent successfully "
+                    f"to {len(batch_recipients)} recipients"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to send announcement email batch {batch_num_display}/{total_batches}: {e}",
+                    exc_info=True
+                )
+                failed_count += len(batch_recipients)
+        
+        # 關閉連接
+        connection.close()
         
         logger.info(
-            f"Announcement email sent successfully to {len(recipient_list)} clients "
+            f"Announcement email sent successfully to {success_count} clients "
+            f"(failed: {failed_count}, batches: {total_batches}) "
             f"for announcement {announcement.id} (title: {announcement.title})"
         )
     

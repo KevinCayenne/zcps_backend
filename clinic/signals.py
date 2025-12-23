@@ -106,15 +106,16 @@ def _send_cancellation_email(application):
     plain_message = strip_tags(html_message)
     
     # 發送 email（使用密件副本保護個資）
-    send_mail(
+    from django.core.mail import EmailMultiAlternatives
+    email_msg = EmailMultiAlternatives(
         subject=subject,
-        message=plain_message,
+        body=plain_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+        to=[],  # 使用空列表，避免在 To 欄位顯示收件人
         bcc=[applicant_email],  # 使用密件副本保護個資
-        html_message=html_message,
-        fail_silently=False
     )
+    email_msg.attach_alternative(html_message, "text/html")
+    email_msg.send(fail_silently=False)
     
     logger.info(
         f"Cancellation email sent successfully to {applicant_email} "

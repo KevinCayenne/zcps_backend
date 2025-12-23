@@ -35,3 +35,5 @@ DATABASES['default'] = dj_database_url.config(
     default=DATABASE_URL,
     engine='django.db.backends.postgresql'
 )
+
+print("DATABASES: ", DATABASES)
