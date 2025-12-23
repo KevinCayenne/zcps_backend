@@ -186,7 +186,7 @@ class SendRegistrationOTPView(APIView):
         
         # 發送 OTP 到 email
         try:
-            from django.core.mail import send_mail
+            from django.core.mail import EmailMultiAlternatives
             from django.conf import settings
             
             subject = '您的註冊驗證碼'
@@ -203,14 +203,15 @@ class SendRegistrationOTPView(APIView):
 謝謝！
 """
             
-            send_mail(
-                subject,
-                message,
-                settings.DEFAULT_FROM_EMAIL,
-                [],  # 使用空列表，避免在 To 欄位顯示收件人
+            # 使用 EmailMultiAlternatives 以支持 BCC
+            email_msg = EmailMultiAlternatives(
+                subject=subject,
+                body=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[],  # 使用空列表，避免在 To 欄位顯示收件人
                 bcc=[email],  # 使用密件副本保護個資
-                fail_silently=False,
             )
+            email_msg.send(fail_silently=False)
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
@@ -1464,15 +1465,16 @@ class CustomUserViewSet(UserViewSet):
         plain_message = strip_tags(html_message)
         
         # 發送 email（使用密件副本保護個資）
-        send_mail(
+        from django.core.mail import EmailMultiAlternatives
+        email_msg = EmailMultiAlternatives(
             subject=subject,
-            message=plain_message,
+            body=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
+            to=[],  # 使用空列表，避免在 To 欄位顯示收件人
             bcc=[application.clinic.email],  # 使用密件副本保護個資
-            html_message=html_message,
-            fail_silently=False,
         )
+        email_msg.attach_alternative(html_message, "text/html")
+        email_msg.send(fail_silently=False)
         
         logger.info(
             f"Verification email sent successfully to {application.clinic.email} "

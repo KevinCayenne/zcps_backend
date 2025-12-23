@@ -209,13 +209,15 @@ class RegistrationSuccessEmail(email.BaseEmailMessage):
             text_body = render_to_string(self.template_name, context).split('{% endblock text_body %}')[0].split('{% block text_body %}')[-1] if '{% block text_body %}' in render_to_string(self.template_name, context) else ''
             html_body = render_to_string(self.template_name, context).split('{% endblock html_body %}')[0].split('{% block html_body %}')[-1] if '{% block html_body %}' in render_to_string(self.template_name, context) else ''
             
-            # 使用 send_mail 發送，並設置 BCC
-            return send_mail(
+            # 使用 EmailMultiAlternatives 發送，並設置 BCC
+            from django.core.mail import EmailMultiAlternatives
+            email_msg = EmailMultiAlternatives(
                 subject=subject,
-                message=text_body,
+                body=text_body,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[],
+                to=[],
                 bcc=to if isinstance(to, list) else [to],
-                html_message=html_body if html_body else None,
-                fail_silently=False,
             )
+            if html_body:
+                email_msg.attach_alternative(html_body, "text/html")
+            return email_msg.send(fail_silently=False)
