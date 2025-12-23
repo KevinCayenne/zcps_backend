@@ -42,7 +42,7 @@ pip install \
  --python-version 3.13 \
  --upgrade \
  --target $directory \
- apig-wsgi dj-rest-auth[with_social]
+ apig-wsgi dj-rest-auth[with_social] psycopg2-binary
 
 if [ -e "$artifact" ]; then
     rm "$artifact"
