@@ -17,6 +17,7 @@ sed '/^dj-rest-auth\[with_social\]/d' requirements.txt > "$filtered_requirements
 
 pip install \
  --platform manylinux2014_x86_64 \
+ --no-deps \
  --only-binary=:all: \
  --python-version 3.13 \
  --upgrade \
