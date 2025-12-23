@@ -134,11 +134,12 @@ The Team
     from_email = settings.DEFAULT_FROM_EMAIL
     recipient_list = [user.email]
 
-    return send_mail(
-        subject,
-        message,
-        from_email,
-        [],  # 使用空列表，避免在 To 欄位顯示收件人
+    from django.core.mail import EmailMultiAlternatives
+    email_msg = EmailMultiAlternatives(
+        subject=subject,
+        body=message,
+        from_email=from_email,
+        to=[],  # 使用空列表，避免在 To 欄位顯示收件人
         bcc=recipient_list,  # 使用密件副本保護個資
-        fail_silently=False,
     )
+    return email_msg.send(fail_silently=False)
