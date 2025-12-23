@@ -6,23 +6,32 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0002_user_google_id_user_profile_picture_url'),
+        ("users", "0002_user_google_id_user_profile_picture_url"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='is_2fa_enabled',
-            field=models.BooleanField(default=False, help_text='Whether user has enabled two-factor authentication'),
+            model_name="user",
+            name="is_2fa_enabled",
+            field=models.BooleanField(
+                default=False,
+                help_text="Whether user has enabled two-factor authentication",
+            ),
         ),
         migrations.AddField(
-            model_name='user',
-            name='last_2fa_verification',
-            field=models.DateTimeField(blank=True, help_text='Timestamp of last successful 2FA verification for audit trails', null=True),
+            model_name="user",
+            name="last_2fa_verification",
+            field=models.DateTimeField(
+                blank=True,
+                help_text="Timestamp of last successful 2FA verification for audit trails",
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='user',
-            name='twofa_setup_date',
-            field=models.DateTimeField(blank=True, help_text='Timestamp when user first enabled 2FA', null=True),
+            model_name="user",
+            name="twofa_setup_date",
+            field=models.DateTimeField(
+                blank=True, help_text="Timestamp when user first enabled 2FA", null=True
+            ),
         ),
     ]

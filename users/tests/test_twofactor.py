@@ -12,7 +12,6 @@ from django.urls import reverse
 from django.core import mail
 from rest_framework.test import APIClient
 from rest_framework import status
-from unittest.mock import patch
 
 from users.models import TwoFactorCode
 from users.twofactor_utils import generate_2fa_code
@@ -28,30 +27,28 @@ class TwoFactorSetupTests(TestCase):
         """Set up test client and user."""
         self.client = APIClient()
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
+            username="testuser", email="test@example.com", password="testpass123"
         )
         self.client.force_authenticate(user=self.user)
 
     def test_enable_2fa_sends_code(self):
         """Test that enabling 2FA sends verification code."""
-        response = self.client.post(reverse('2fa_enable'))
+        response = self.client.post(reverse("2fa_enable"))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('message', response.data)
+        self.assertIn("message", response.data)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn('two-factor authentication code', mail.outbox[0].subject.lower())
+        self.assertIn("two-factor authentication code", mail.outbox[0].subject.lower())
 
     def test_enable_2fa_already_enabled(self):
         """Test enabling 2FA when already enabled returns error."""
         self.user.is_2fa_enabled = True
         self.user.save()
 
-        response = self.client.post(reverse('2fa_enable'))
+        response = self.client.post(reverse("2fa_enable"))
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('already enabled', response.data['error'].lower())
+        self.assertIn("already enabled", response.data["error"].lower())
 
     def test_verify_setup_with_valid_code(self):
         """Test verifying 2FA setup with valid code."""
@@ -59,8 +56,7 @@ class TwoFactorSetupTests(TestCase):
         twofactor_code = generate_2fa_code(self.user)
 
         response = self.client.post(
-            reverse('2fa_verify_setup'),
-            {'code': twofactor_code.code}
+            reverse("2fa_verify_setup"), {"code": twofactor_code.code}
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -72,10 +68,7 @@ class TwoFactorSetupTests(TestCase):
         """Test verifying 2FA setup with invalid code."""
         generate_2fa_code(self.user)
 
-        response = self.client.post(
-            reverse('2fa_verify_setup'),
-            {'code': '999999'}
-        )
+        response = self.client.post(reverse("2fa_verify_setup"), {"code": "999999"})
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.user.refresh_from_db()
@@ -86,10 +79,7 @@ class TwoFactorSetupTests(TestCase):
         self.user.is_2fa_enabled = True
         self.user.save()
 
-        response = self.client.post(
-            reverse('2fa_disable'),
-            {'password': 'testpass123'}
-        )
+        response = self.client.post(reverse("2fa_disable"), {"password": "testpass123"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
@@ -101,8 +91,7 @@ class TwoFactorSetupTests(TestCase):
         self.user.save()
 
         response = self.client.post(
-            reverse('2fa_disable'),
-            {'password': 'wrongpassword'}
+            reverse("2fa_disable"), {"password": "wrongpassword"}
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -115,11 +104,11 @@ class TwoFactorSetupTests(TestCase):
         self.user.twofa_setup_date = timezone.now()
         self.user.save()
 
-        response = self.client.get(reverse('2fa_status'))
+        response = self.client.get(reverse("2fa_status"))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data['is_2fa_enabled'])
-        self.assertIsNotNone(response.data['twofa_setup_date'])
+        self.assertTrue(response.data["is_2fa_enabled"])
+        self.assertIsNotNone(response.data["twofa_setup_date"])
 
 
 class TwoFactorLoginFlowTests(TestCase):
@@ -129,18 +118,16 @@ class TwoFactorLoginFlowTests(TestCase):
         """Set up test client and user."""
         self.client = APIClient()
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
+            username="testuser", email="test@example.com", password="testpass123"
         )
 
     def test_login_without_2fa_returns_tokens(self):
         """Test login without 2FA enabled returns JWT tokens."""
         print(f"URL: {reverse('jwt-create')}")
         response = self.client.post(
-            reverse('jwt-create'),
-            {'email': 'test@example.com', 'password': 'testpass123'},
-            format='json'
+            reverse("jwt-create"),
+            {"email": "test@example.com", "password": "testpass123"},
+            format="json",
         )
 
         if response.status_code != status.HTTP_200_OK:
@@ -148,8 +135,8 @@ class TwoFactorLoginFlowTests(TestCase):
             print(f"Response data: {response.data}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        self.assertIn("access", response.data)
+        self.assertIn("refresh", response.data)
 
     def test_login_with_2fa_returns_temp_token(self):
         """Test login with 2FA enabled returns temporary token."""
@@ -157,13 +144,13 @@ class TwoFactorLoginFlowTests(TestCase):
         self.user.save()
 
         response = self.client.post(
-            reverse('jwt-create'),
-            {'email': 'test@example.com', 'password': 'testpass123'}
+            reverse("jwt-create"),
+            {"email": "test@example.com", "password": "testpass123"},
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('temp_token', response.data)
-        self.assertTrue(response.data['requires_2fa'])
+        self.assertIn("temp_token", response.data)
+        self.assertTrue(response.data["requires_2fa"])
         self.assertEqual(len(mail.outbox), 1)
 
     def test_verify_2fa_with_valid_code(self):
@@ -176,15 +163,14 @@ class TwoFactorLoginFlowTests(TestCase):
         temp_token = generate_temporary_2fa_token(self.user)
 
         # Verify code
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {temp_token}')
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {temp_token}")
         response = self.client.post(
-            reverse('2fa_verify_login'),
-            {'code': twofactor_code.code}
+            reverse("2fa_verify_login"), {"code": twofactor_code.code}
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        self.assertIn("access", response.data)
+        self.assertIn("refresh", response.data)
 
         # Check that last verification was updated
         self.user.refresh_from_db()
@@ -198,11 +184,8 @@ class TwoFactorLoginFlowTests(TestCase):
         generate_2fa_code(self.user)
         temp_token = generate_temporary_2fa_token(self.user)
 
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {temp_token}')
-        response = self.client.post(
-            reverse('2fa_verify_login'),
-            {'code': '999999'}
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {temp_token}")
+        response = self.client.post(reverse("2fa_verify_login"), {"code": "999999"})
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -212,21 +195,18 @@ class TwoFactorLoginFlowTests(TestCase):
         self.user.save()
 
         # Create expired code
-        twofactor_code = TwoFactorCode.objects.create(
+        TwoFactorCode.objects.create(
             user=self.user,
-            code='123456',
-            expires_at=timezone.now() - timedelta(minutes=1)
+            code="123456",
+            expires_at=timezone.now() - timedelta(minutes=1),
         )
         temp_token = generate_temporary_2fa_token(self.user)
 
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {temp_token}')
-        response = self.client.post(
-            reverse('2fa_verify_login'),
-            {'code': '123456'}
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {temp_token}")
+        response = self.client.post(reverse("2fa_verify_login"), {"code": "123456"})
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('expired', response.data['error'].lower())
+        self.assertIn("expired", response.data["error"].lower())
 
     def test_resend_2fa_code(self):
         """Test resending 2FA code during login."""
@@ -235,11 +215,11 @@ class TwoFactorLoginFlowTests(TestCase):
 
         temp_token = generate_temporary_2fa_token(self.user)
 
-        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {temp_token}')
-        response = self.client.post(reverse('2fa_resend'))
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {temp_token}")
+        response = self.client.post(reverse("2fa_resend"))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('message', response.data)
+        self.assertIn("message", response.data)
         self.assertEqual(len(mail.outbox), 1)
 
 
@@ -249,9 +229,7 @@ class TwoFactorCodeModelTests(TestCase):
     def setUp(self):
         """Set up test user."""
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
+            username="testuser", email="test@example.com", password="testpass123"
         )
 
     def test_code_is_valid_when_new(self):
@@ -263,8 +241,8 @@ class TwoFactorCodeModelTests(TestCase):
         """Test that expired code is invalid."""
         code = TwoFactorCode.objects.create(
             user=self.user,
-            code='123456',
-            expires_at=timezone.now() - timedelta(minutes=1)
+            code="123456",
+            expires_at=timezone.now() - timedelta(minutes=1),
         )
         self.assertFalse(code.is_valid())
 
@@ -298,9 +276,7 @@ class TwoFactorUtilsTests(TestCase):
     def setUp(self):
         """Set up test user."""
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
+            username="testuser", email="test@example.com", password="testpass123"
         )
 
     def test_generate_2fa_code_creates_code(self):

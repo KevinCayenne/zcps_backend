@@ -37,9 +37,7 @@ class EmailOrUsernameModelBackend(ModelBackend):
 
         try:
             # Try to fetch the user by searching for either username or email
-            user = User.objects.get(
-                Q(username=username) | Q(email=username)
-            )
+            user = User.objects.get(Q(username=username) | Q(email=username))
         except User.DoesNotExist:
             # Timing attack mitigation technique:
             # Run the default password hasher once to reduce timing
@@ -52,7 +50,9 @@ class EmailOrUsernameModelBackend(ModelBackend):
             return None
 
         # Check the password and return the user if valid
-        if user.check_password(password) and self.user_can_authenticate(user): # user.is_active
+        if user.check_password(password) and self.user_can_authenticate(
+            user
+        ):  # user.is_active
             return user
 
         return None

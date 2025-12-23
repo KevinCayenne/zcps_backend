@@ -8,34 +8,161 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('clinic', '0003_certificateapplication'),
+        ("clinic", "0003_certificateapplication"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Doctor',
+            name="Doctor",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('create_time', models.DateTimeField(auto_now_add=True, null=True, verbose_name='建立時間')),
-                ('update_time', models.DateTimeField(auto_now=True, null=True, verbose_name='更新時間')),
-                ('name', models.CharField(help_text='醫生姓名', max_length=255, verbose_name='醫生姓名')),
-                ('email', models.EmailField(blank=True, help_text='醫生電子郵件', max_length=255, null=True, verbose_name='電子郵件')),
-                ('phone', models.CharField(blank=True, help_text='醫生電話', max_length=255, null=True, verbose_name='電話')),
-                ('license_number', models.CharField(blank=True, help_text='醫生執業執照號碼', max_length=255, null=True, verbose_name='執業執照號碼')),
-                ('specialty', models.CharField(blank=True, help_text='醫生專科（如：內科、外科等）', max_length=255, null=True, verbose_name='專科')),
-                ('title', models.CharField(blank=True, help_text='醫生職稱（如：主任醫師、主治醫師等）', max_length=255, null=True, verbose_name='職稱')),
-                ('is_active', models.BooleanField(default=True, help_text='醫生是否仍在該診所執業', verbose_name='是否啟用')),
-                ('notes', models.TextField(blank=True, help_text='其他備註資訊', null=True, verbose_name='備註')),
-                ('clinic', models.ForeignKey(help_text='醫生所屬的診所', on_delete=django.db.models.deletion.CASCADE, related_name='doctors', to='clinic.clinic', verbose_name='診所')),
-                ('create_user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_ownership', to=settings.AUTH_USER_MODEL, verbose_name='建立者')),
-                ('user', models.ForeignKey(blank=True, help_text='醫生對應的系統用戶（如果醫生也是系統用戶）', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='doctor_profiles', to=settings.AUTH_USER_MODEL, verbose_name='用戶')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "create_time",
+                    models.DateTimeField(
+                        auto_now_add=True, null=True, verbose_name="建立時間"
+                    ),
+                ),
+                (
+                    "update_time",
+                    models.DateTimeField(
+                        auto_now=True, null=True, verbose_name="更新時間"
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="醫生姓名", max_length=255, verbose_name="醫生姓名"
+                    ),
+                ),
+                (
+                    "email",
+                    models.EmailField(
+                        blank=True,
+                        help_text="醫生電子郵件",
+                        max_length=255,
+                        null=True,
+                        verbose_name="電子郵件",
+                    ),
+                ),
+                (
+                    "phone",
+                    models.CharField(
+                        blank=True,
+                        help_text="醫生電話",
+                        max_length=255,
+                        null=True,
+                        verbose_name="電話",
+                    ),
+                ),
+                (
+                    "license_number",
+                    models.CharField(
+                        blank=True,
+                        help_text="醫生執業執照號碼",
+                        max_length=255,
+                        null=True,
+                        verbose_name="執業執照號碼",
+                    ),
+                ),
+                (
+                    "specialty",
+                    models.CharField(
+                        blank=True,
+                        help_text="醫生專科（如：內科、外科等）",
+                        max_length=255,
+                        null=True,
+                        verbose_name="專科",
+                    ),
+                ),
+                (
+                    "title",
+                    models.CharField(
+                        blank=True,
+                        help_text="醫生職稱（如：主任醫師、主治醫師等）",
+                        max_length=255,
+                        null=True,
+                        verbose_name="職稱",
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True,
+                        help_text="醫生是否仍在該診所執業",
+                        verbose_name="是否啟用",
+                    ),
+                ),
+                (
+                    "notes",
+                    models.TextField(
+                        blank=True,
+                        help_text="其他備註資訊",
+                        null=True,
+                        verbose_name="備註",
+                    ),
+                ),
+                (
+                    "clinic",
+                    models.ForeignKey(
+                        help_text="醫生所屬的診所",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="doctors",
+                        to="clinic.clinic",
+                        verbose_name="診所",
+                    ),
+                ),
+                (
+                    "create_user",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(app_label)s_%(class)s_ownership",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="建立者",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="醫生對應的系統用戶（如果醫生也是系統用戶）",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="doctor_profiles",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="用戶",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '診所醫生',
-                'verbose_name_plural': '診所醫生',
-                'ordering': ['-create_time'],
-                'indexes': [models.Index(fields=['clinic'], name='clinic_doct_clinic__bd723e_idx'), models.Index(fields=['user'], name='clinic_doct_user_id_459a9a_idx'), models.Index(fields=['is_active'], name='clinic_doct_is_acti_7ce15c_idx'), models.Index(fields=['clinic', 'is_active'], name='clinic_doct_clinic__d85466_idx')],
+                "verbose_name": "診所醫生",
+                "verbose_name_plural": "診所醫生",
+                "ordering": ["-create_time"],
+                "indexes": [
+                    models.Index(
+                        fields=["clinic"], name="clinic_doct_clinic__bd723e_idx"
+                    ),
+                    models.Index(
+                        fields=["user"], name="clinic_doct_user_id_459a9a_idx"
+                    ),
+                    models.Index(
+                        fields=["is_active"], name="clinic_doct_is_acti_7ce15c_idx"
+                    ),
+                    models.Index(
+                        fields=["clinic", "is_active"],
+                        name="clinic_doct_clinic__d85466_idx",
+                    ),
+                ],
             },
         ),
     ]

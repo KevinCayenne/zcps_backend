@@ -34,27 +34,27 @@ class TwoFactorEnforcementMiddleware:
 
     # Paths that are exempt from 2FA enforcement
     EXEMPT_PATHS = [
-        '/auth/2fa/enable/',           # Allow users to enable 2FA
-        '/auth/2fa/enable/verify/',    # Allow users to verify 2FA setup
-        '/auth/2fa/status/',            # Allow users to check their 2FA status
-        '/auth/2fa/verify/',            # Allow 2FA login verification
-        '/auth/2fa/resend/',            # Allow resending 2FA codes
-        '/auth/jwt/create/',            # Allow login endpoint
-        '/auth/jwt/refresh/',           # Allow token refresh
-        '/auth/jwt/verify/',            # Allow token verification
-        '/auth/logout/',                # Allow logout
-        '/auth/users/',                 # Allow user registration (POST only)
-        '/auth/users/activation/',      # Allow email activation
-        '/auth/users/resend_activation/',  # Allow resend activation
-        '/auth/users/reset_password/',  # Allow password reset
-        '/auth/users/reset_password_confirm/',  # Allow password reset confirm
-        '/auth/google/',                # Allow OAuth login
-        '/auth/google/callback/',       # Allow OAuth callback
-        '/admin/',                      # Allow admin access
-        '/api/schema/',                 # Allow API schema
-        '/api/docs/',                   # Allow API docs
-        '/api/redoc/',                  # Allow ReDoc
-        '/accounts/',                   # Allow allauth URLs
+        "/auth/2fa/enable/",  # Allow users to enable 2FA
+        "/auth/2fa/enable/verify/",  # Allow users to verify 2FA setup
+        "/auth/2fa/status/",  # Allow users to check their 2FA status
+        "/auth/2fa/verify/",  # Allow 2FA login verification
+        "/auth/2fa/resend/",  # Allow resending 2FA codes
+        "/auth/jwt/create/",  # Allow login endpoint
+        "/auth/jwt/refresh/",  # Allow token refresh
+        "/auth/jwt/verify/",  # Allow token verification
+        "/auth/logout/",  # Allow logout
+        "/auth/users/",  # Allow user registration (POST only)
+        "/auth/users/activation/",  # Allow email activation
+        "/auth/users/resend_activation/",  # Allow resend activation
+        "/auth/users/reset_password/",  # Allow password reset
+        "/auth/users/reset_password_confirm/",  # Allow password reset confirm
+        "/auth/google/",  # Allow OAuth login
+        "/auth/google/callback/",  # Allow OAuth callback
+        "/admin/",  # Allow admin access
+        "/api/schema/",  # Allow API schema
+        "/api/docs/",  # Allow API docs
+        "/api/redoc/",  # Allow ReDoc
+        "/accounts/",  # Allow allauth URLs
     ]
 
     def __init__(self, get_response):
@@ -105,11 +105,11 @@ class TwoFactorEnforcementMiddleware:
 
         return JsonResponse(
             {
-                'error': 'Two-factor authentication is required. Please enable 2FA at /auth/2fa/enable/',
-                'required_action': 'enable_2fa',
-                'endpoint': '/auth/2fa/enable/'
+                "error": "Two-factor authentication is required. Please enable 2FA at /auth/2fa/enable/",
+                "required_action": "enable_2fa",
+                "endpoint": "/auth/2fa/enable/",
             },
-            status=403
+            status=403,
         )
 
     def _is_path_exempt(self, path):
@@ -154,11 +154,11 @@ class TemporaryTokenRestrictionMiddleware:
 
     # Paths that temporary 2FA tokens are allowed to access
     ALLOWED_PATHS = [
-        '/auth/2fa/verify/',         # Complete 2FA verification during login
-        '/auth/2fa/resend/',         # Resend 2FA code during login
-        '/auth/2fa/enable/',         # Enable 2FA (for setup when enforcement is enabled)
-        '/auth/2fa/enable/verify/',  # Verify 2FA setup code
-        '/auth/2fa/status/',         # Check 2FA status
+        "/auth/2fa/verify/",  # Complete 2FA verification during login
+        "/auth/2fa/resend/",  # Resend 2FA code during login
+        "/auth/2fa/enable/",  # Enable 2FA (for setup when enforcement is enabled)
+        "/auth/2fa/enable/verify/",  # Verify 2FA setup code
+        "/auth/2fa/status/",  # Check 2FA status
     ]
 
     def __init__(self, get_response):
@@ -177,14 +177,14 @@ class TemporaryTokenRestrictionMiddleware:
         """
 
         # Step 1: Check if there's an Authorization header
-        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-        if not auth_header.startswith('Bearer '):
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if not auth_header.startswith("Bearer "):
             # No JWT token in request, let it pass
             return self.get_response(request)
 
         # Step 2: Extract token from Authorization header
         try:
-            token_string = auth_header.split(' ')[1]
+            token_string = auth_header.split(" ")[1]
         except IndexError:
             # Malformed Authorization header, let DRF handle it
             return self.get_response(request)
@@ -192,7 +192,7 @@ class TemporaryTokenRestrictionMiddleware:
         # Step 3: Decode token to check for temp_2fa claim
         try:
             token = UntypedToken(token_string)
-            is_temp_token = token.get('temp_2fa', False)
+            is_temp_token = token.get("temp_2fa", False)
         except (InvalidToken, TokenError):
             # Invalid token, let DRF authentication handle it
             return self.get_response(request)
@@ -214,11 +214,11 @@ class TemporaryTokenRestrictionMiddleware:
 
         return JsonResponse(
             {
-                'error': 'This temporary token can only be used for 2FA verification endpoints.',
-                'allowed_endpoints': self.ALLOWED_PATHS,
-                'detail': 'Please complete 2FA verification at /auth/2fa/verify/ to obtain full access tokens.'
+                "error": "This temporary token can only be used for 2FA verification endpoints.",
+                "allowed_endpoints": self.ALLOWED_PATHS,
+                "detail": "Please complete 2FA verification at /auth/2fa/verify/ to obtain full access tokens.",
             },
-            status=403
+            status=403,
         )
 
     def _is_path_allowed(self, path):

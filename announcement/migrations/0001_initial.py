@@ -15,21 +15,57 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Announcement',
+            name="Announcement",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('create_time', models.DateTimeField(auto_now_add=True, null=True, verbose_name='建立時間')),
-                ('update_time', models.DateTimeField(auto_now=True, null=True, verbose_name='更新時間')),
-                ('title', models.CharField(max_length=255, verbose_name='標題')),
-                ('content', models.JSONField(default=dict, verbose_name='內容')),
-                ('is_active', models.BooleanField(default=True, verbose_name='是否發布')),
-                ('is_send_email', models.BooleanField(default=False, verbose_name='是否發送電子郵件通知')),
-                ('html_cache', models.TextField(blank=True, verbose_name='HTML 快取')),
-                ('create_user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_ownership', to=settings.AUTH_USER_MODEL, verbose_name='建立者')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "create_time",
+                    models.DateTimeField(
+                        auto_now_add=True, null=True, verbose_name="建立時間"
+                    ),
+                ),
+                (
+                    "update_time",
+                    models.DateTimeField(
+                        auto_now=True, null=True, verbose_name="更新時間"
+                    ),
+                ),
+                ("title", models.CharField(max_length=255, verbose_name="標題")),
+                ("content", models.JSONField(default=dict, verbose_name="內容")),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="是否發布"),
+                ),
+                (
+                    "is_send_email",
+                    models.BooleanField(
+                        default=False, verbose_name="是否發送電子郵件通知"
+                    ),
+                ),
+                ("html_cache", models.TextField(blank=True, verbose_name="HTML 快取")),
+                (
+                    "create_user",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(app_label)s_%(class)s_ownership",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="建立者",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '公告',
-                'verbose_name_plural': '公告',
+                "verbose_name": "公告",
+                "verbose_name_plural": "公告",
             },
         ),
     ]

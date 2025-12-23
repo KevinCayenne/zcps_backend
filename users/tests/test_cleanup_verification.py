@@ -15,36 +15,39 @@ class CleanupVerificationTests(TestCase):
         """Test that TwoFactorSettings model no longer exists."""
         # Attempting to import should fail
         with self.assertRaises(ImportError):
-            from users.models import TwoFactorSettings
+            pass
 
     def test_django_solo_not_in_installed_apps(self):
         """Test that django-solo is not in INSTALLED_APPS."""
-        self.assertNotIn('solo', settings.INSTALLED_APPS)
+        self.assertNotIn("solo", settings.INSTALLED_APPS)
 
     def test_admin_does_not_include_twofactorsettings(self):
         """Test that admin does not try to register TwoFactorSettings."""
         from users import admin as users_admin
 
         # Check that TwoFactorSettings is not imported
-        self.assertFalse(hasattr(users_admin, 'TwoFactorSettings'))
-        self.assertFalse(hasattr(users_admin, 'TwoFactorSettingsAdmin'))
+        self.assertFalse(hasattr(users_admin, "TwoFactorSettings"))
+        self.assertFalse(hasattr(users_admin, "TwoFactorSettingsAdmin"))
 
     def test_migration_exists(self):
         """Test that migration to remove TwoFactorSettings exists."""
-        import os
-        from pathlib import Path
         from django.conf import settings
-        
+
         # Get the project base directory dynamically
         base_dir = settings.BASE_DIR
-        migration_path = base_dir / 'users' / 'migrations' / '0008_remove_twofactorsettings.py'
-        self.assertTrue(migration_path.exists(),
-                       "Migration 0008_remove_twofactorsettings.py should exist")
+        migration_path = (
+            base_dir / "users" / "migrations" / "0008_remove_twofactorsettings.py"
+        )
+        self.assertTrue(
+            migration_path.exists(),
+            "Migration 0008_remove_twofactorsettings.py should exist",
+        )
 
     def test_settings_uses_dataclass(self):
         """Test that settings now uses TwoFactorConfig dataclass."""
-        self.assertTrue(hasattr(settings, 'TWOFACTOR_CONFIG'))
+        self.assertTrue(hasattr(settings, "TWOFACTOR_CONFIG"))
 
         # Verify it's a dataclass
         from dataclasses import is_dataclass
+
         self.assertTrue(is_dataclass(settings.TWOFACTOR_CONFIG))

@@ -11,6 +11,7 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from users.enums import UserRole, InformationSource, OccupationCategory
 
+
 class User(AbstractUser):
     """
     Custom User model extending AbstractUser.
@@ -24,135 +25,129 @@ class User(AbstractUser):
 
     # Override email to make it required and unique
     email = models.EmailField(
-        verbose_name=_('Email'),
+        verbose_name=_("Email"),
         unique=True,
         blank=False,
         error_messages={
-            'unique': 'A user with this email already exists.',
-        }
+            "unique": "A user with this email already exists.",
+        },
     )
 
     # Add phone_number field supporting international format
     phone_number = models.CharField(
-        verbose_name=_('手機號碼'),
+        verbose_name=_("手機號碼"),
         max_length=17,
         blank=True,
         null=True,
         unique=True,
         db_index=True,
-        help_text='Phone number in international format (e.g., +1 234 5678901)'
+        help_text="Phone number in international format (e.g., +1 234 5678901)",
     )
 
     # OAuth fields
     google_id = models.CharField(
-        verbose_name=_('Google ID'),
+        verbose_name=_("Google ID"),
         max_length=255,
         blank=True,
         null=True,
         unique=True,
         db_index=True,
-        help_text='Google OAuth user ID'
+        help_text="Google OAuth user ID",
     )
 
     profile_picture_url = models.URLField(
-        verbose_name=_('大頭貼網址'),
+        verbose_name=_("大頭貼網址"),
         blank=True,
         null=True,
-        help_text='URL to user profile picture from OAuth provider'
+        help_text="URL to user profile picture from OAuth provider",
     )
 
     # Email verification field
     email_verified = models.BooleanField(
-        verbose_name=_('Email 驗證'),
+        verbose_name=_("Email 驗證"),
         default=False,
-        help_text='Whether user email has been verified'
+        help_text="Whether user email has been verified",
     )
 
     # Two-Factor Authentication fields
     is_2fa_enabled = models.BooleanField(
-        verbose_name=_('是否啟用兩步驟驗證'),
+        verbose_name=_("是否啟用兩步驟驗證"),
         default=True,
-        help_text='Whether user has enabled two-factor authentication'
+        help_text="Whether user has enabled two-factor authentication",
     )
 
     twofa_setup_date = models.DateTimeField(
-        verbose_name=_('兩步驟驗證設定日期'),
+        verbose_name=_("兩步驟驗證設定日期"),
         blank=True,
         null=True,
-        help_text='Timestamp when user first enabled 2FA'
+        help_text="Timestamp when user first enabled 2FA",
     )
 
     last_2fa_verification = models.DateTimeField(
-        verbose_name=_('最後兩步驟驗證日期'),
+        verbose_name=_("最後兩步驟驗證日期"),
         blank=True,
         null=True,
-        help_text='Timestamp of last successful 2FA verification for audit trails'
+        help_text="Timestamp of last successful 2FA verification for audit trails",
     )
 
     # New 2FA method selection fields
     preferred_2fa_method = models.CharField(
-        verbose_name=_('偏好兩步驟驗證方式'),
+        verbose_name=_("偏好兩步驟驗證方式"),
         max_length=20,
         choices=[
-            ('EMAIL', 'Email'),
-            ('PHONE', 'Phone'),
+            ("EMAIL", "Email"),
+            ("PHONE", "Phone"),
         ],
-        default='EMAIL',
-        help_text='User preferred 2FA method (default is EMAIL)'
+        default="EMAIL",
+        help_text="User preferred 2FA method (default is EMAIL)",
     )
 
     phone_number_verified = models.BooleanField(
-        verbose_name=_('手機號碼驗證'),
+        verbose_name=_("手機號碼驗證"),
         default=False,
-        help_text='Whether user phone number has been verified for 2FA'
+        help_text="Whether user phone number has been verified for 2FA",
     )
 
     # Role/Permission fields
     role = models.CharField(
-        verbose_name=_('權限角色'),
+        verbose_name=_("權限角色"),
         max_length=20,
         choices=UserRole.choices,
         default=UserRole.CLIENT,
-        help_text='User role for permission management'
+        help_text="User role for permission management",
     )
 
     information_source = models.CharField(
         max_length=20,
         choices=InformationSource.CHOICES,
-        verbose_name=_('資訊來源'),
-        help_text=_('怎麼知道LBV認證活動資訊')
+        verbose_name=_("資訊來源"),
+        help_text=_("怎麼知道LBV認證活動資訊"),
     )
-    
+
     # 職業類別（註冊時填寫）
     occupation_category = models.CharField(
-        verbose_name=_('職業類別'),
+        verbose_name=_("職業類別"),
         max_length=20,
         choices=OccupationCategory.CHOICES,
         default=OccupationCategory.OTHER,
-        help_text=_('申請人的職業類別'),
+        help_text=_("申請人的職業類別"),
     )
-    
+
     # Add timestamp fields for auditing
-    created_at = models.DateTimeField(
-        verbose_name=_('建立日期'),
-        auto_now_add=True
-    )
-    updated_at = models.DateTimeField(
-        verbose_name=_('更新日期'),
-        auto_now=True
-    )
+    created_at = models.DateTimeField(verbose_name=_("建立日期"), auto_now_add=True)
+    updated_at = models.DateTimeField(verbose_name=_("更新日期"), auto_now=True)
     cert_record_group_id = models.IntegerField(
-        verbose_name=_('證書群組 ID'),
+        verbose_name=_("證書群組 ID"),
         blank=True,
         null=True,
-        help_text=_('證書群組 ID'),
+        help_text=_("證書群組 ID"),
         db_index=True,
     )
 
     class Meta:
-        verbose_name = _('使用者')
-        verbose_name_plural = _('使用者')    
-        ordering = ['-created_at']
+        verbose_name = _("使用者")
+        verbose_name_plural = _("使用者")
+        ordering = ["-created_at"]
 
     def __str__(self):
         """Return string representation of user."""
@@ -186,56 +181,56 @@ class TwoFactorCode(models.Model):
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='twofactor_codes',
-        help_text='User this verification code belongs to'
+        related_name="twofactor_codes",
+        help_text="User this verification code belongs to",
     )
 
     code = models.CharField(
-        verbose_name=_('驗證碼'),
+        verbose_name=_("驗證碼"),
         max_length=6,
-        help_text='6-digit numeric verification code'
+        help_text="6-digit numeric verification code",
     )
 
     created_at = models.DateTimeField(
-        verbose_name=_('建立日期'),
+        verbose_name=_("建立日期"),
         auto_now_add=True,
-        help_text='Timestamp when code was generated'
+        help_text="Timestamp when code was generated",
     )
 
     expires_at = models.DateTimeField(
-        verbose_name=_('到期日期'),
-        help_text='Timestamp when code expires',
-        db_index=True
+        verbose_name=_("到期日期"),
+        help_text="Timestamp when code expires",
+        db_index=True,
     )
 
     is_used = models.BooleanField(
-        verbose_name=_('是否已使用'),
+        verbose_name=_("是否已使用"),
         default=False,
-        help_text='Whether code has been used successfully'
+        help_text="Whether code has been used successfully",
     )
 
     failed_attempts = models.IntegerField(
-        verbose_name=_('失敗驗證次數'),
+        verbose_name=_("失敗驗證次數"),
         default=0,
-        help_text='Number of failed verification attempts for this code'
+        help_text="Number of failed verification attempts for this code",
     )
 
     verification_type = models.CharField(
-        verbose_name=_('驗證類型'),
+        verbose_name=_("驗證類型"),
         max_length=20,
         choices=[
-            ('TWO_FACTOR', 'Two-Factor Authentication'),
+            ("TWO_FACTOR", "Two-Factor Authentication"),
         ],
-        default='TWO_FACTOR',
-        help_text='Type of verification this code is used for'
+        default="TWO_FACTOR",
+        help_text="Type of verification this code is used for",
     )
 
     class Meta:
-        verbose_name = _('多因子驗證碼')
-        verbose_name_plural = _('多因子驗證碼')
-        ordering = ['-created_at']
+        verbose_name = _("多因子驗證碼")
+        verbose_name_plural = _("多因子驗證碼")
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['user', 'expires_at']),
+            models.Index(fields=["user", "expires_at"]),
         ]
 
     def __str__(self):
@@ -267,66 +262,59 @@ class TwoFactorCode(models.Model):
 class EmailVerificationOTP(models.Model):
     """
     註冊前的 Email OTP 驗證模型
-    
+
     用於在用戶註冊前驗證 email 是否有效。
     """
-    
+
     email = models.EmailField(
-        verbose_name=_('Email 地址'),
-        help_text='要驗證的 email 地址',
-        db_index=True
+        verbose_name=_("Email 地址"), help_text="要驗證的 email 地址", db_index=True
     )
-    
+
     code = models.CharField(
-        verbose_name=_('驗證碼'),
-        max_length=6,
-        help_text='6 位數驗證碼'
+        verbose_name=_("驗證碼"), max_length=6, help_text="6 位數驗證碼"
     )
-    
+
     created_at = models.DateTimeField(
-        verbose_name=_('建立時間'),
-        auto_now_add=True,
-        help_text='驗證碼生成時間'
+        verbose_name=_("建立時間"), auto_now_add=True, help_text="驗證碼生成時間"
     )
-    
+
     expires_at = models.DateTimeField(
-        verbose_name=_('過期時間'),
-        help_text='驗證碼過期時間',
-        db_index=True
+        verbose_name=_("過期時間"), help_text="驗證碼過期時間", db_index=True
     )
-    
+
     is_used = models.BooleanField(
-        verbose_name=_('是否已使用'),
+        verbose_name=_("是否已使用"),
         default=False,
-        help_text='驗證碼是否已被使用',
-        db_index=True
+        help_text="驗證碼是否已被使用",
+        db_index=True,
     )
-    
+
     failed_attempts = models.IntegerField(
-        verbose_name=_('失敗驗證次數'),
+        verbose_name=_("失敗驗證次數"),
         default=0,
-        help_text='失敗驗證次數（超過 5 次需重新發送）'
+        help_text="失敗驗證次數（超過 5 次需重新發送）",
     )
-    
+
     class Meta:
-        verbose_name = _('Email 驗證 OTP')
-        verbose_name_plural = _('Email 驗證 OTP')
-        ordering = ['-created_at']
+        verbose_name = _("Email 驗證 OTP")
+        verbose_name_plural = _("Email 驗證 OTP")
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['email', 'is_used']),
-            models.Index(fields=['email', 'expires_at']),
+            models.Index(fields=["email", "is_used"]),
+            models.Index(fields=["email", "expires_at"]),
         ]
-    
+
     def __str__(self):
-        return f'{self.email} - {self.code}'
-    
+        return f"{self.email} - {self.code}"
+
     def is_valid(self):
         """
         檢查驗證碼是否有效（未使用且未過期）
         """
         from django.utils import timezone
+
         return (
-            not self.is_used and
-            timezone.now() <= self.expires_at and
-            self.failed_attempts < 5
+            not self.is_used
+            and timezone.now() <= self.expires_at
+            and self.failed_attempts < 5
         )

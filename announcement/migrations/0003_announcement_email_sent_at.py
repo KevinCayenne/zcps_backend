@@ -6,13 +6,18 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('announcement', '0002_announcement_active_end_time_and_more'),
+        ("announcement", "0002_announcement_active_end_time_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='announcement',
-            name='email_sent_at',
-            field=models.DateTimeField(blank=True, help_text='記錄 email 發送的時間，用於確保同一公告僅發送一次', null=True, verbose_name='Email 發送時間'),
+            model_name="announcement",
+            name="email_sent_at",
+            field=models.DateTimeField(
+                blank=True,
+                help_text="記錄 email 發送的時間，用於確保同一公告僅發送一次",
+                null=True,
+                verbose_name="Email 發送時間",
+            ),
         ),
     ]

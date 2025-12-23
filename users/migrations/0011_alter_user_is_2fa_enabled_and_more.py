@@ -6,18 +6,28 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0010_user_role'),
+        ("users", "0010_user_role"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='user',
-            name='is_2fa_enabled',
-            field=models.BooleanField(default=True, help_text='Whether user has enabled two-factor authentication', verbose_name='是否啟用兩步驟驗證'),
+            model_name="user",
+            name="is_2fa_enabled",
+            field=models.BooleanField(
+                default=True,
+                help_text="Whether user has enabled two-factor authentication",
+                verbose_name="是否啟用兩步驟驗證",
+            ),
         ),
         migrations.AlterField(
-            model_name='user',
-            name='preferred_2fa_method',
-            field=models.CharField(choices=[('EMAIL', 'Email'), ('PHONE', 'Phone')], default='EMAIL', help_text='User preferred 2FA method (default is EMAIL)', max_length=20, verbose_name='偏好兩步驟驗證方式'),
+            model_name="user",
+            name="preferred_2fa_method",
+            field=models.CharField(
+                choices=[("EMAIL", "Email"), ("PHONE", "Phone")],
+                default="EMAIL",
+                help_text="User preferred 2FA method (default is EMAIL)",
+                max_length=20,
+                verbose_name="偏好兩步驟驗證方式",
+            ),
         ),
     ]
