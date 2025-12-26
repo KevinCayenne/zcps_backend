@@ -264,7 +264,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AWS_LAMBDA_FUNCTION_TIMEOUT = 60
 
 
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# Default from email address for sending emails
+DEFAULT_FROM_EMAIL = "LBV證書會員中心 <mail@lbv-certified.com.tw>"
 
 
 # Django REST Framework Configuration
