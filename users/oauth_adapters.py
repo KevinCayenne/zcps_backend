@@ -8,10 +8,7 @@ import logging
 from urllib.parse import urlencode
 from datetime import timedelta
 from django.conf import settings
-from django.shortcuts import redirect
-from django.utils import timezone
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from allauth.socialaccount.models import SocialAccount
 from rest_framework_simplejwt.tokens import RefreshToken
 
 logger = logging.getLogger(__name__)
@@ -34,12 +31,13 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
             return
 
         try:
-            email = sociallogin.account.extra_data.get('email', '').lower()
+            email = sociallogin.account.extra_data.get("email", "").lower()
             if not email:
                 return
 
             # Try to find existing user by email
             from django.contrib.auth import get_user_model
+
             User = get_user_model()
 
             try:
@@ -74,11 +72,13 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         extra_data = sociallogin.account.extra_data
 
         # Get first and last name
-        if 'given_name' in extra_data:
-            user.first_name = extra_data['given_name'][:30]  # Limit to field max_length
+        if "given_name" in extra_data:
+            user.first_name = extra_data["given_name"][:30]  # Limit to field max_length
 
-        if 'family_name' in extra_data:
-            user.last_name = extra_data['family_name'][:150]  # Limit to field max_length
+        if "family_name" in extra_data:
+            user.last_name = extra_data["family_name"][
+                :150
+            ]  # Limit to field max_length
 
         return user
 
@@ -101,14 +101,14 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
             extra_data = sociallogin.account.extra_data
 
             # Update google_id
-            if 'id' in extra_data or 'sub' in extra_data:
-                user.google_id = extra_data.get('id') or extra_data.get('sub')
+            if "id" in extra_data or "sub" in extra_data:
+                user.google_id = extra_data.get("id") or extra_data.get("sub")
 
             # Update profile_picture_url
-            if 'picture' in extra_data:
-                user.profile_picture_url = extra_data['picture']
+            if "picture" in extra_data:
+                user.profile_picture_url = extra_data["picture"]
 
-            user.save(update_fields=['google_id', 'profile_picture_url'])
+            user.save(update_fields=["google_id", "profile_picture_url"])
         except Exception as e:
             logger.error(f"Error updating OAuth fields: {str(e)}")
 
@@ -125,10 +125,7 @@ def build_error_redirect_url(error_type, error_message):
         Full redirect URL with error parameters
     """
     base_url = settings.GOOGLE_OAUTH_ERROR_REDIRECT_URL
-    params = urlencode({
-        'error_type': error_type,
-        'error_message': error_message
-    })
+    params = urlencode({"error_type": error_type, "error_message": error_message})
     return f"{base_url}?{params}"
 
 
@@ -144,10 +141,7 @@ def build_success_redirect_url(access_token, refresh_token):
         Full redirect URL with token parameters
     """
     base_url = settings.GOOGLE_OAUTH_SUCCESS_REDIRECT_URL
-    params = urlencode({
-        'access': access_token,
-        'refresh': refresh_token
-    })
+    params = urlencode({"access": access_token, "refresh": refresh_token})
     return f"{base_url}?{params}"
 
 
@@ -181,8 +175,8 @@ def generate_temporary_2fa_token(user):
     refresh = RefreshToken.for_user(user)
 
     # Set custom claim to indicate this is a temporary 2FA token
-    refresh['temp_2fa'] = True
-    refresh['user_id'] = user.id
+    refresh["temp_2fa"] = True
+    refresh["user_id"] = user.id
 
     # Get temporary token lifetime from settings
     temp_lifetime_minutes = settings.TWOFACTOR_TEMPORARY_TOKEN_LIFETIME_MINUTES

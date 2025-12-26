@@ -1,7 +1,12 @@
 # Production-specific requirements
 -r requirements.txt
 
+# Linting and Code Quality
+mypy==1.3.0
+pre-commit==4.5.1
+pydantic==2.12.5
+flake8==7.3.0
+
 # Development and Testing
 pytest==9.0.1
 pytest-django==4.11.1
-

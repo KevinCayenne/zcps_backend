@@ -7,24 +7,26 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('announcement', '0001_initial'),
+        ("announcement", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='announcement',
-            name='active_end_time',
-            field=models.DateTimeField(blank=True, null=True, verbose_name='失效時間'),
+            model_name="announcement",
+            name="active_end_time",
+            field=models.DateTimeField(blank=True, null=True, verbose_name="失效時間"),
         ),
         migrations.AddField(
-            model_name='announcement',
-            name='active_member',
-            field=models.ManyToManyField(blank=True, to=settings.AUTH_USER_MODEL, verbose_name='發布人'),
+            model_name="announcement",
+            name="active_member",
+            field=models.ManyToManyField(
+                blank=True, to=settings.AUTH_USER_MODEL, verbose_name="發布人"
+            ),
         ),
         migrations.AddField(
-            model_name='announcement',
-            name='active_start_time',
-            field=models.DateTimeField(blank=True, null=True, verbose_name='生效時間'),
+            model_name="announcement",
+            name="active_start_time",
+            field=models.DateTimeField(blank=True, null=True, verbose_name="生效時間"),
         ),
     ]

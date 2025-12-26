@@ -4,7 +4,7 @@ Tests for settings consolidation - TwoFactorConfig dataclass.
 Tests the new settings-based 2FA configuration.
 """
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.conf import settings
 from dataclasses import FrozenInstanceError
 
@@ -14,7 +14,7 @@ class TwoFactorConfigDataclassTests(TestCase):
 
     def test_twofactor_config_exists(self):
         """Test that TWOFACTOR_CONFIG exists in settings."""
-        self.assertTrue(hasattr(settings, 'TWOFACTOR_CONFIG'))
+        self.assertTrue(hasattr(settings, "TWOFACTOR_CONFIG"))
         self.assertIsNotNone(settings.TWOFACTOR_CONFIG)
 
     def test_twofactor_config_default_values(self):
@@ -22,7 +22,7 @@ class TwoFactorConfigDataclassTests(TestCase):
         config = settings.TWOFACTOR_CONFIG
 
         self.assertEqual(config.enforce_2fa_for_all_users, False)
-        self.assertEqual(config.default_2fa_method, 'EMAIL')
+        self.assertEqual(config.default_2fa_method, "EMAIL")
         self.assertEqual(config.code_expiration_seconds, 600)
         self.assertEqual(config.max_failed_attempts, 5)
         self.assertEqual(config.temporary_token_lifetime_minutes, 10)

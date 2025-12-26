@@ -6,18 +6,29 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0001_initial'),
+        ("users", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='google_id',
-            field=models.CharField(blank=True, db_index=True, help_text='Google OAuth user ID', max_length=255, null=True, unique=True),
+            model_name="user",
+            name="google_id",
+            field=models.CharField(
+                blank=True,
+                db_index=True,
+                help_text="Google OAuth user ID",
+                max_length=255,
+                null=True,
+                unique=True,
+            ),
         ),
         migrations.AddField(
-            model_name='user',
-            name='profile_picture_url',
-            field=models.URLField(blank=True, help_text='URL to user profile picture from OAuth provider', null=True),
+            model_name="user",
+            name="profile_picture_url",
+            field=models.URLField(
+                blank=True,
+                help_text="URL to user profile picture from OAuth provider",
+                null=True,
+            ),
         ),
     ]

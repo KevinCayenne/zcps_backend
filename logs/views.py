@@ -11,11 +11,12 @@ from config.paginator import StandardResultsSetPagination
 class ActionLogsViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing action logs.
-    
+
     Only allows read operations (list and retrieve).
     Requires staff role permission.
     """
-    queryset = ActionLog.objects.all().order_by('-timestamp')
+
+    queryset = ActionLog.objects.all().order_by("-timestamp")
     serializer_class = ActionLogSerializer
     permission_classes = [IsAuthenticated, IsStaffRolePermission]
     filter_backends = [

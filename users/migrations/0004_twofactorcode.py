@@ -8,26 +8,74 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0003_user_is_2fa_enabled_user_last_2fa_verification_and_more'),
+        ("users", "0003_user_is_2fa_enabled_user_last_2fa_verification_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TwoFactorCode',
+            name="TwoFactorCode",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(help_text='6-digit numeric verification code', max_length=6)),
-                ('created_at', models.DateTimeField(auto_now_add=True, help_text='Timestamp when code was generated')),
-                ('expires_at', models.DateTimeField(db_index=True, help_text='Timestamp when code expires')),
-                ('is_used', models.BooleanField(default=False, help_text='Whether code has been used successfully')),
-                ('failed_attempts', models.IntegerField(default=0, help_text='Number of failed verification attempts for this code')),
-                ('user', models.ForeignKey(help_text='User this verification code belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='twofactor_codes', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        help_text="6-digit numeric verification code", max_length=6
+                    ),
+                ),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, help_text="Timestamp when code was generated"
+                    ),
+                ),
+                (
+                    "expires_at",
+                    models.DateTimeField(
+                        db_index=True, help_text="Timestamp when code expires"
+                    ),
+                ),
+                (
+                    "is_used",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether code has been used successfully",
+                    ),
+                ),
+                (
+                    "failed_attempts",
+                    models.IntegerField(
+                        default=0,
+                        help_text="Number of failed verification attempts for this code",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        help_text="User this verification code belongs to",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="twofactor_codes",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'two-factor code',
-                'verbose_name_plural': 'two-factor codes',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['user', 'expires_at'], name='users_twofa_user_id_7ca82f_idx')],
+                "verbose_name": "two-factor code",
+                "verbose_name_plural": "two-factor codes",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["user", "expires_at"],
+                        name="users_twofa_user_id_7ca82f_idx",
+                    )
+                ],
             },
         ),
     ]

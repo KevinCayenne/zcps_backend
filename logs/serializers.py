@@ -7,10 +7,11 @@ User = get_user_model()
 
 class ActionLogUserSerializer(serializers.ModelSerializer):
     """簡化的 User serializer 用於 ActionLog"""
+
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name')
-        read_only_fields = ('id', 'username', 'email', 'first_name', 'last_name')
+        fields = ("id", "username", "email", "first_name", "last_name")
+        read_only_fields = ("id", "username", "email", "first_name", "last_name")
 
 
 class ActionLogSerializer(serializers.ModelSerializer):
@@ -18,5 +19,21 @@ class ActionLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ActionLog
-        fields = ('id', 'user', 'model_name', 'action', 'timestamp', 'object_id', 'changes')
-        read_only_fields = ('id', 'user', 'model_name', 'action', 'timestamp', 'object_id', 'changes')
+        fields = (
+            "id",
+            "user",
+            "model_name",
+            "action",
+            "timestamp",
+            "object_id",
+            "changes",
+        )
+        read_only_fields = (
+            "id",
+            "user",
+            "model_name",
+            "action",
+            "timestamp",
+            "object_id",
+            "changes",
+        )

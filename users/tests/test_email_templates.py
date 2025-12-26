@@ -10,29 +10,27 @@ This script tests:
 """
 
 import os
+from unittest.mock import patch
+
 import django
+from django.conf import settings
+
+from users.email import ActivationEmail, PasswordResetEmail, parse_frontend_url
+from users.models import User
 
 # Setup Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
 django.setup()
-
-from django.conf import settings
-from users.email import (
-    ActivationEmail, PasswordResetEmail, ConfirmationEmail,
-    PasswordChangedConfirmationEmail, parse_frontend_url
-)
-from users.models import User
-from unittest.mock import patch
 
 
 def test_activation_email():
     """Test activation email template and context."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Activation Email")
-    print("="*60)
+    print("=" * 60)
 
     # Create a test user (don't save to DB)
-    user = User(username='testuser', email='test@example.com')
+    user = User(username="testuser", email="test@example.com")
     user.id = 1  # Set an ID for UID generation
 
     # Create email instance
@@ -40,9 +38,9 @@ def test_activation_email():
 
     # Mock context
     context = {
-        'user': user,
-        'uid': 'test-uid-123',
-        'token': 'test-token-456',
+        "user": user,
+        "uid": "test-uid-123",
+        "token": "test-token-456",
     }
 
     # Get context data (this will call our custom get_context_data)
@@ -54,22 +52,28 @@ def test_activation_email():
     print(f"✓ Protocol: {full_context.get('protocol')}")
     print(f"✓ Domain: {full_context.get('domain')}")
     print(f"✓ URL: {full_context.get('url')}")
-    print(f"✓ Full URL: {full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}")
+    print(
+        f"✓ Full URL: {full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}"
+    )
 
     # Verify no double protocol
     full_url = f"{full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}"
-    if 'http://http://' in full_url or 'https://https://' in full_url:
+    if "http://http://" in full_url or "https://https://" in full_url:
         print("❌ ERROR: Double protocol detected!")
         return False
     else:
         print("✓ No double protocol")
 
     # Verify domain matches FRONTEND_URL
-    expected_domain = settings.FRONTEND_URL.replace('http://', '').replace('https://', '')
-    if full_context.get('domain') == expected_domain:
-        print(f"✓ Domain matches FRONTEND_URL")
+    expected_domain = settings.FRONTEND_URL.replace("http://", "").replace(
+        "https://", ""
+    )
+    if full_context.get("domain") == expected_domain:
+        print("✓ Domain matches FRONTEND_URL")
     else:
-        print(f"❌ ERROR: Domain mismatch. Expected: {expected_domain}, Got: {full_context.get('domain')}")
+        print(
+            f"❌ ERROR: Domain mismatch. Expected: {expected_domain}, Got: {full_context.get('domain')}"
+        )
         return False
 
     print("\n✅ Activation email test PASSED")
@@ -78,18 +82,18 @@ def test_activation_email():
 
 def test_password_reset_email():
     """Test password reset email template and context."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Password Reset Email")
-    print("="*60)
+    print("=" * 60)
 
     # Create email instance
     email = PasswordResetEmail()
 
     # Mock context
     context = {
-        'user': User(username='testuser', email='test@example.com'),
-        'uid': 'test-uid-789',
-        'token': 'test-token-012',
+        "user": User(username="testuser", email="test@example.com"),
+        "uid": "test-uid-789",
+        "token": "test-token-012",
     }
 
     # Get context data
@@ -101,11 +105,13 @@ def test_password_reset_email():
     print(f"✓ Protocol: {full_context.get('protocol')}")
     print(f"✓ Domain: {full_context.get('domain')}")
     print(f"✓ URL: {full_context.get('url')}")
-    print(f"✓ Full URL: {full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}")
+    print(
+        f"✓ Full URL: {full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}"
+    )
 
     # Verify no double protocol
     full_url = f"{full_context.get('protocol')}://{full_context.get('domain')}/{full_context.get('url')}"
-    if 'http://http://' in full_url or 'https://https://' in full_url:
+    if "http://http://" in full_url or "https://https://" in full_url:
         print("❌ ERROR: Double protocol detected!")
         return False
     else:
@@ -117,22 +123,22 @@ def test_password_reset_email():
 
 def test_parse_frontend_url():
     """Test the parse_frontend_url helper function."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing parse_frontend_url() Helper Function")
-    print("="*60)
+    print("=" * 60)
 
     test_cases = [
-        ('http://localhost:3000', ('http', 'localhost:3000')),
-        ('https://app.example.com', ('https', 'app.example.com')),
-        ('localhost:3000', ('http', 'localhost:3000')),
-        ('127.0.0.1:8000', ('http', '127.0.0.1:8000')),
-        ('example.com', ('https', 'example.com')),
-        ('https://example.com:8080', ('https', 'example.com:8080')),
+        ("http://localhost:3000", ("http", "localhost:3000")),
+        ("https://app.example.com", ("https", "app.example.com")),
+        ("localhost:3000", ("http", "localhost:3000")),
+        ("127.0.0.1:8000", ("http", "127.0.0.1:8000")),
+        ("example.com", ("https", "example.com")),
+        ("https://example.com:8080", ("https", "example.com:8080")),
     ]
 
     all_passed = True
     for frontend_url, expected in test_cases:
-        with patch.object(settings, 'FRONTEND_URL', frontend_url):
+        with patch.object(settings, "FRONTEND_URL", frontend_url):
             result = parse_frontend_url()
             if result == expected:
                 print(f"✓ '{frontend_url}' -> {result}")
@@ -150,24 +156,26 @@ def test_parse_frontend_url():
 
 def test_settings():
     """Verify DJOSER settings are correct."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing DJOSER Configuration")
-    print("="*60)
+    print("=" * 60)
 
-    email_config = settings.DJOSER.get('EMAIL', {})
+    email_config = settings.DJOSER.get("EMAIL", {})
 
     print(f"✓ FRONTEND_URL: {settings.FRONTEND_URL}")
     print(f"✓ Activation email class: {email_config.get('activation')}")
     print(f"✓ Password reset email class: {email_config.get('password_reset')}")
     print(f"✓ Confirmation email class: {email_config.get('confirmation')}")
-    print(f"✓ Password changed email class: {email_config.get('password_changed_confirmation')}")
+    print(
+        f"✓ Password changed email class: {email_config.get('password_changed_confirmation')}"
+    )
 
     # Verify classes are set correctly
     expected_classes = {
-        'activation': 'users.email.ActivationEmail',
-        'confirmation': 'users.email.ConfirmationEmail',
-        'password_reset': 'users.email.PasswordResetEmail',
-        'password_changed_confirmation': 'users.email.PasswordChangedConfirmationEmail',
+        "activation": "users.email.ActivationEmail",
+        "confirmation": "users.email.ConfirmationEmail",
+        "password_reset": "users.email.PasswordResetEmail",
+        "password_changed_confirmation": "users.email.PasswordChangedConfirmationEmail",
     }
 
     all_correct = True
@@ -185,9 +193,9 @@ def test_settings():
     return all_correct
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("\n🔍 Testing Custom Email Templates")
-    print("="*60)
+    print("=" * 60)
 
     results = []
 
@@ -198,9 +206,9 @@ if __name__ == '__main__':
     results.append(("Password Reset Email", test_password_reset_email()))
 
     # Print summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TEST SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
     for test_name, passed in results:
         status = "✅ PASSED" if passed else "❌ FAILED"

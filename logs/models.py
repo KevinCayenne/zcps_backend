@@ -14,7 +14,7 @@ class ActionLog(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name='使用者'
+        verbose_name="使用者",
     )
     model_name = models.CharField(max_length=100)
     action = models.CharField(max_length=6, choices=ACTION_CHOICES)

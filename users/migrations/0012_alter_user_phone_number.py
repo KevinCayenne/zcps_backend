@@ -6,13 +6,21 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0011_alter_user_is_2fa_enabled_and_more'),
+        ("users", "0011_alter_user_is_2fa_enabled_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='user',
-            name='phone_number',
-            field=models.CharField(blank=True, db_index=True, help_text='Phone number in international format (e.g., +1 234 5678901)', max_length=17, null=True, unique=True, verbose_name='手機號碼'),
+            model_name="user",
+            name="phone_number",
+            field=models.CharField(
+                blank=True,
+                db_index=True,
+                help_text="Phone number in international format (e.g., +1 234 5678901)",
+                max_length=17,
+                null=True,
+                unique=True,
+                verbose_name="手機號碼",
+            ),
         ),
     ]
