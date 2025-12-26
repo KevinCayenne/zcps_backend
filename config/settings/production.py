@@ -6,7 +6,7 @@ Inherits from base.py and adds production-specific configurations.
 
 import os
 import dj_database_url
-from .base import DATABASES, DATABASE_URL
+from .base import *  # noqa: F403, F405
 
 # Debug mode
 DEBUG = False
@@ -30,12 +30,16 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 CORS_ORIGIN_WHITELIST = os.environ.get("CORS_ORIGIN_WHITELIST", "").split(",")
 
-if not DATABASE_URL:
+if not DATABASE_URL:  # noqa: F405
     raise ValueError(
         "DATABASE_URL environment variable is required in production. "
         "Add it to your .env file: DATABASE_URL=postgres://user:pass@host:5432/dbname"
     )
 
-DATABASES["default"] = dj_database_url.config(
-    default=DATABASE_URL, engine="django.db.backends.postgresql", conn_max_age=600
+DATABASES["default"] = dj_database_url.config(  # noqa: F405
+    default=DATABASE_URL,  # noqa: F405
+    engine="django.db.backends.postgresql",
+    conn_max_age=600,
 )
+
+print("DATABASES: ", DATABASES)  # noqa: F405

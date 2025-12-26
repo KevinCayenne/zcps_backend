@@ -4,7 +4,7 @@ Testing settings for Django boilerplate.
 Inherits from base.py and adds testing-specific configurations.
 """
 
-from .base import DJOSER
+from .base import *  # noqa: F403, F405
 
 # Debug mode
 DEBUG = False
@@ -26,7 +26,7 @@ DATABASES = {
 }
 
 # Disable activation emails for testing to allow immediate login
-DJOSER["SEND_ACTIVATION_EMAIL"] = False
+DJOSER["SEND_ACTIVATION_EMAIL"] = False  # noqa: F405
 
 # Allowed hosts for testing
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
