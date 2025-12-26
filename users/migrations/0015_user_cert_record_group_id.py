@@ -6,13 +6,19 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0014_user_information_source_user_occupation_category'),
+        ("users", "0014_user_information_source_user_occupation_category"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='cert_record_group_id',
-            field=models.IntegerField(blank=True, db_index=True, help_text='證書群組 ID', null=True, verbose_name='證書群組 ID'),
+            model_name="user",
+            name="cert_record_group_id",
+            field=models.IntegerField(
+                blank=True,
+                db_index=True,
+                help_text="證書群組 ID",
+                null=True,
+                verbose_name="證書群組 ID",
+            ),
         ),
     ]

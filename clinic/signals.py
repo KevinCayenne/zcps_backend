@@ -6,7 +6,6 @@ import logging
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 from django.conf import settings
-from django.core.mail import send_mail
 from django.utils.html import strip_tags
 from clinic.models import CertificateApplication
 from clinic.enums import CertificateApplicationStatus
@@ -37,51 +36,56 @@ def certificate_application_post_save(sender, instance, created, **kwargs):
     # 如果是新創建的，不需要處理
     if created:
         return
-    
+
     # 獲取舊狀態（從 pre_save 中設置）
-    old_status = getattr(instance, '_old_status', None)
+    old_status = getattr(instance, "_old_status", None)
     new_status = instance.status
-    
+
     # 如果狀態從非 cancelled 變為 cancelled，發送 email
-    if old_status != CertificateApplicationStatus.CANCELLED and new_status == CertificateApplicationStatus.CANCELLED:
+    if (
+        old_status != CertificateApplicationStatus.CANCELLED
+        and new_status == CertificateApplicationStatus.CANCELLED
+    ):
         try:
             _send_cancellation_email(instance)
         except Exception as e:
             logger.error(
                 f"Failed to send cancellation email for application {instance.id}: {e}",
-                exc_info=True
+                exc_info=True,
             )
 
 
 def _send_cancellation_email(application):
     """
     發送取消通知 email 給申請人
-    
+
     Args:
         application: CertificateApplication 實例
-        
+
     Raises:
         Exception: 如果發送失敗
     """
     # 獲取申請人 email（優先從 certificate_data，否則從 user）
     applicant_email = None
     if application.certificate_data and isinstance(application.certificate_data, dict):
-        applicant_email = application.certificate_data.get('email')
-    
+        applicant_email = application.certificate_data.get("email")
+
     if not applicant_email and application.user:
         applicant_email = application.user.email
-    
+
     if not applicant_email:
-        logger.warning(f"Application {application.id} does not have applicant email address, skipping email")
+        logger.warning(
+            f"Application {application.id} does not have applicant email address, skipping email"
+        )
         return
-    
+
     # 構建 email 內容
-    subject = '證書申請已取消'
-    
+    subject = "證書申請已取消"
+
     # 獲取申請人資訊
-    applicant_name = application.get_applicant_name() or '申請人'
-    clinic_name = application.clinic.name if application.clinic else '診所'
-    
+    applicant_name = application.get_applicant_name() or "申請人"
+    clinic_name = application.clinic.name if application.clinic else "診所"
+
     # 使用 HTML 模板
     html_message = f"""
     <html>
@@ -101,12 +105,13 @@ def _send_cancellation_email(application):
     </body>
     </html>
     """
-    
+
     # 純文字版本（用於不支持 HTML 的 email 客戶端）
     plain_message = strip_tags(html_message)
-    
+
     # 發送 email（使用密件副本保護個資）
     from django.core.mail import EmailMultiAlternatives
+
     email_msg = EmailMultiAlternatives(
         subject=subject,
         body=plain_message,
@@ -116,9 +121,8 @@ def _send_cancellation_email(application):
     )
     email_msg.attach_alternative(html_message, "text/html")
     email_msg.send(fail_silently=False)
-    
+
     logger.info(
         f"Cancellation email sent successfully to {applicant_email} "
         f"for application {application.id}"
     )
-

@@ -13,7 +13,7 @@ filtered_requirements=$(mktemp)
 trap 'rm -f "$filtered_requirements"' EXIT
 
 # Strip dj-rest-auth[with_social] before bulk install to avoid duplicate handling.
-sed '/^dj-rest-auth\[with_social\]/d' requirements.txt > "$filtered_requirements"
+sed '/^dj-rest-auth/d' requirements.txt > "$filtered_requirements"
 
 pip install \
  --platform manylinux2014_x86_64 \

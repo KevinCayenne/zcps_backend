@@ -15,22 +15,70 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Clinic',
+            name="Clinic",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('create_time', models.DateTimeField(auto_now_add=True, null=True, verbose_name='建立時間')),
-                ('update_time', models.DateTimeField(auto_now=True, null=True, verbose_name='更新時間')),
-                ('name', models.CharField(max_length=255, verbose_name='診所名稱')),
-                ('address', models.CharField(blank=True, max_length=255, null=True, verbose_name='地址')),
-                ('phone', models.CharField(blank=True, max_length=255, null=True, verbose_name='電話')),
-                ('email', models.EmailField(blank=True, max_length=255, null=True, verbose_name='電子郵件')),
-                ('website', models.URLField(blank=True, max_length=255, null=True, verbose_name='網站')),
-                ('create_user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_ownership', to=settings.AUTH_USER_MODEL, verbose_name='建立者')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "create_time",
+                    models.DateTimeField(
+                        auto_now_add=True, null=True, verbose_name="建立時間"
+                    ),
+                ),
+                (
+                    "update_time",
+                    models.DateTimeField(
+                        auto_now=True, null=True, verbose_name="更新時間"
+                    ),
+                ),
+                ("name", models.CharField(max_length=255, verbose_name="診所名稱")),
+                (
+                    "address",
+                    models.CharField(
+                        blank=True, max_length=255, null=True, verbose_name="地址"
+                    ),
+                ),
+                (
+                    "phone",
+                    models.CharField(
+                        blank=True, max_length=255, null=True, verbose_name="電話"
+                    ),
+                ),
+                (
+                    "email",
+                    models.EmailField(
+                        blank=True, max_length=255, null=True, verbose_name="電子郵件"
+                    ),
+                ),
+                (
+                    "website",
+                    models.URLField(
+                        blank=True, max_length=255, null=True, verbose_name="網站"
+                    ),
+                ),
+                (
+                    "create_user",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(app_label)s_%(class)s_ownership",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="建立者",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '診所',
-                'verbose_name_plural': '診所',
-                'ordering': ['-name'],
+                "verbose_name": "診所",
+                "verbose_name_plural": "診所",
+                "ordering": ["-name"],
             },
         ),
     ]

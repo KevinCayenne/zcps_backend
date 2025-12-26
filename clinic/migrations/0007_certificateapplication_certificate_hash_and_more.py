@@ -6,18 +6,35 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('clinic', '0006_certificateapplication_consultant_name_and_more'),
+        ("clinic", "0006_certificateapplication_consultant_name_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='certificateapplication',
-            name='certificate_hash',
-            field=models.CharField(blank=True, help_text='證書完成發證後返回的 hash 值', max_length=255, null=True, verbose_name='證書 Hash'),
+            model_name="certificateapplication",
+            name="certificate_hash",
+            field=models.CharField(
+                blank=True,
+                help_text="證書完成發證後返回的 hash 值",
+                max_length=255,
+                null=True,
+                verbose_name="證書 Hash",
+            ),
         ),
         migrations.AlterField(
-            model_name='certificateapplication',
-            name='status',
-            field=models.CharField(choices=[('pending', '待驗證'), ('verified', '已驗證'), ('issued', '已發證'), ('expired', '已過期'), ('cancelled', '已取消')], default='pending', max_length=20, verbose_name='狀態'),
+            model_name="certificateapplication",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "待驗證"),
+                    ("verified", "已驗證"),
+                    ("issued", "已發證"),
+                    ("expired", "已過期"),
+                    ("cancelled", "已取消"),
+                ],
+                default="pending",
+                max_length=20,
+                verbose_name="狀態",
+            ),
         ),
     ]

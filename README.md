@@ -76,6 +76,9 @@ pip install -r requirements.txt
 # Copy environment variables
 cp .env.example .env
 # Edit .env with your configuration
+
+# Install pre-commit hooks
+pre-commit install
 ```
 
 ### 2. Configure Google OAuth (Optional)

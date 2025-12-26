@@ -8,33 +8,153 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('clinic', '0002_clinicuserpermission'),
+        ("clinic", "0002_clinicuserpermission"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='CertificateApplication',
+            name="CertificateApplication",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('create_time', models.DateTimeField(auto_now_add=True, null=True, verbose_name='建立時間')),
-                ('update_time', models.DateTimeField(auto_now=True, null=True, verbose_name='更新時間')),
-                ('certificate_data', models.JSONField(default=dict, help_text='存儲證書相關的表單資料，包含 email 和 tx- 開頭的欄位', verbose_name='證書資料')),
-                ('verification_token', models.CharField(help_text='用於驗證 email 的 token', max_length=64, unique=True, verbose_name='驗證 Token')),
-                ('token_expires_at', models.DateTimeField(help_text='驗證 token 的過期時間', verbose_name='Token 過期時間')),
-                ('verified_at', models.DateTimeField(blank=True, help_text='email 驗證完成的時間', null=True, verbose_name='驗證時間')),
-                ('status', models.CharField(choices=[('pending', '待驗證'), ('verified', '已驗證'), ('issued', '已發證'), ('expired', '已過期')], default='pending', max_length=20, verbose_name='狀態')),
-                ('certificate_group_id', models.IntegerField(blank=True, help_text='發證成功後返回的證書群組 ID', null=True, verbose_name='證書群組 ID')),
-                ('issued_at', models.DateTimeField(blank=True, help_text='證書發放完成的時間', null=True, verbose_name='發證時間')),
-                ('clinic', models.ForeignKey(help_text='證書所屬的診所', on_delete=django.db.models.deletion.CASCADE, related_name='certificate_applications', to='clinic.clinic', verbose_name='診所')),
-                ('create_user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_ownership', to=settings.AUTH_USER_MODEL, verbose_name='建立者')),
-                ('user', models.ForeignKey(help_text='申請證書的用戶（會員）', on_delete=django.db.models.deletion.CASCADE, related_name='certificate_applications', to=settings.AUTH_USER_MODEL, verbose_name='用戶')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "create_time",
+                    models.DateTimeField(
+                        auto_now_add=True, null=True, verbose_name="建立時間"
+                    ),
+                ),
+                (
+                    "update_time",
+                    models.DateTimeField(
+                        auto_now=True, null=True, verbose_name="更新時間"
+                    ),
+                ),
+                (
+                    "certificate_data",
+                    models.JSONField(
+                        default=dict,
+                        help_text="存儲證書相關的表單資料，包含 email 和 tx- 開頭的欄位",
+                        verbose_name="證書資料",
+                    ),
+                ),
+                (
+                    "verification_token",
+                    models.CharField(
+                        help_text="用於驗證 email 的 token",
+                        max_length=64,
+                        unique=True,
+                        verbose_name="驗證 Token",
+                    ),
+                ),
+                (
+                    "token_expires_at",
+                    models.DateTimeField(
+                        help_text="驗證 token 的過期時間", verbose_name="Token 過期時間"
+                    ),
+                ),
+                (
+                    "verified_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="email 驗證完成的時間",
+                        null=True,
+                        verbose_name="驗證時間",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "待驗證"),
+                            ("verified", "已驗證"),
+                            ("issued", "已發證"),
+                            ("expired", "已過期"),
+                        ],
+                        default="pending",
+                        max_length=20,
+                        verbose_name="狀態",
+                    ),
+                ),
+                (
+                    "certificate_group_id",
+                    models.IntegerField(
+                        blank=True,
+                        help_text="發證成功後返回的證書群組 ID",
+                        null=True,
+                        verbose_name="證書群組 ID",
+                    ),
+                ),
+                (
+                    "issued_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="證書發放完成的時間",
+                        null=True,
+                        verbose_name="發證時間",
+                    ),
+                ),
+                (
+                    "clinic",
+                    models.ForeignKey(
+                        help_text="證書所屬的診所",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="certificate_applications",
+                        to="clinic.clinic",
+                        verbose_name="診所",
+                    ),
+                ),
+                (
+                    "create_user",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(app_label)s_%(class)s_ownership",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="建立者",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        help_text="申請證書的用戶（會員）",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="certificate_applications",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="用戶",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '證書申請',
-                'verbose_name_plural': '證書申請',
-                'ordering': ['-create_time'],
-                'indexes': [models.Index(fields=['verification_token'], name='clinic_cert_verific_12ada8_idx'), models.Index(fields=['status'], name='clinic_cert_status_7271cc_idx'), models.Index(fields=['user'], name='clinic_cert_user_id_a33717_idx'), models.Index(fields=['clinic'], name='clinic_cert_clinic__445078_idx'), models.Index(fields=['user', 'clinic'], name='clinic_cert_user_id_635dfb_idx')],
+                "verbose_name": "證書申請",
+                "verbose_name_plural": "證書申請",
+                "ordering": ["-create_time"],
+                "indexes": [
+                    models.Index(
+                        fields=["verification_token"],
+                        name="clinic_cert_verific_12ada8_idx",
+                    ),
+                    models.Index(
+                        fields=["status"], name="clinic_cert_status_7271cc_idx"
+                    ),
+                    models.Index(
+                        fields=["user"], name="clinic_cert_user_id_a33717_idx"
+                    ),
+                    models.Index(
+                        fields=["clinic"], name="clinic_cert_clinic__445078_idx"
+                    ),
+                    models.Index(
+                        fields=["user", "clinic"], name="clinic_cert_user_id_635dfb_idx"
+                    ),
+                ],
             },
         ),
     ]

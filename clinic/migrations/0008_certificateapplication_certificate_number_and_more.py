@@ -6,18 +6,30 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('clinic', '0007_certificateapplication_certificate_hash_and_more'),
+        ("clinic", "0007_certificateapplication_certificate_hash_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='certificateapplication',
-            name='certificate_number',
-            field=models.CharField(blank=True, help_text='證書認證序號（系統自動生成）', max_length=100, null=True, unique=True, verbose_name='認證序號'),
+            model_name="certificateapplication",
+            name="certificate_number",
+            field=models.CharField(
+                blank=True,
+                help_text="證書認證序號（系統自動生成）",
+                max_length=100,
+                null=True,
+                unique=True,
+                verbose_name="認證序號",
+            ),
         ),
         migrations.AddField(
-            model_name='certificateapplication',
-            name='surgery_date',
-            field=models.DateField(blank=True, help_text='手術執行日期', null=True, verbose_name='手術執行日期'),
+            model_name="certificateapplication",
+            name="surgery_date",
+            field=models.DateField(
+                blank=True,
+                help_text="手術執行日期",
+                null=True,
+                verbose_name="手術執行日期",
+            ),
         ),
     ]

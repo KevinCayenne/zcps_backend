@@ -6,39 +6,71 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('clinic', '0004_doctor'),
+        ("clinic", "0004_doctor"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='clinic',
-            name='number',
-            field=models.CharField(default=23, help_text='診所編號', max_length=255, unique=True, verbose_name='編號'),
+            model_name="clinic",
+            name="number",
+            field=models.CharField(
+                default=23,
+                help_text="診所編號",
+                max_length=255,
+                unique=True,
+                verbose_name="編號",
+            ),
             preserve_default=False,
         ),
         migrations.AlterField(
-            model_name='clinic',
-            name='address',
-            field=models.CharField(blank=True, help_text='診所地址', max_length=255, null=True, verbose_name='地址'),
+            model_name="clinic",
+            name="address",
+            field=models.CharField(
+                blank=True,
+                help_text="診所地址",
+                max_length=255,
+                null=True,
+                verbose_name="地址",
+            ),
         ),
         migrations.AlterField(
-            model_name='clinic',
-            name='email',
-            field=models.EmailField(blank=True, help_text='診所電子郵件', max_length=255, null=True, verbose_name='電子郵件'),
+            model_name="clinic",
+            name="email",
+            field=models.EmailField(
+                blank=True,
+                help_text="診所電子郵件",
+                max_length=255,
+                null=True,
+                verbose_name="電子郵件",
+            ),
         ),
         migrations.AlterField(
-            model_name='clinic',
-            name='name',
-            field=models.CharField(help_text='診所名稱', max_length=255, verbose_name='診所名稱'),
+            model_name="clinic",
+            name="name",
+            field=models.CharField(
+                help_text="診所名稱", max_length=255, verbose_name="診所名稱"
+            ),
         ),
         migrations.AlterField(
-            model_name='clinic',
-            name='phone',
-            field=models.CharField(blank=True, help_text='診所電話', max_length=255, null=True, verbose_name='電話'),
+            model_name="clinic",
+            name="phone",
+            field=models.CharField(
+                blank=True,
+                help_text="診所電話",
+                max_length=255,
+                null=True,
+                verbose_name="電話",
+            ),
         ),
         migrations.AlterField(
-            model_name='clinic',
-            name='website',
-            field=models.URLField(blank=True, help_text='診所網站', max_length=255, null=True, verbose_name='網站'),
+            model_name="clinic",
+            name="website",
+            field=models.URLField(
+                blank=True,
+                help_text="診所網站",
+                max_length=255,
+                null=True,
+                verbose_name="網站",
+            ),
         ),
     ]

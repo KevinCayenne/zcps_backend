@@ -6,7 +6,7 @@ charset-normalizer==3.4.4
 cryptography==46.0.3
 defusedxml==0.7.1
 dj-database-url==2.1.0
-dj-rest-auth[with_social]==5.0.2
+dj-rest-auth==5.0.2
 Django==5.2.8
 django-allauth==65.13.1
 django-cors-headers==4.9.0

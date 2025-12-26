@@ -13,6 +13,7 @@ MONITORED_MODELS = {
     "Announcement",
 }
 
+
 # Signal handler to store old values before saving the instance
 @receiver(pre_save)
 def capture_old_values(sender, instance, **kwargs):
@@ -91,15 +92,15 @@ def get_model_changes(instance, created=False):
 
         # Return all changes as a single string
         return "".join(changes) if changes else ""
-    
+
     # For CREATE operations, return a string representation of the instance
     if created:
         # 對於 CREATE 操作，返回實例的關鍵信息
-        if hasattr(instance, '__str__'):
+        if hasattr(instance, "__str__"):
             return str(instance)
         else:
             # 如果沒有 __str__ 方法，返回模型名稱和主鍵
             return f"{instance.__class__.__name__} #{instance.pk}"
-    
+
     # For UPDATE operations without old_instance, return empty string
     return ""

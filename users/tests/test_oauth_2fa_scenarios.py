@@ -11,11 +11,7 @@ import pytest
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import AccessToken
-from unittest.mock import patch, Mock
-from users.oauth_adapters import (
-    generate_temporary_2fa_token,
-    generate_jwt_tokens
-)
+from users.oauth_adapters import generate_temporary_2fa_token, generate_jwt_tokens
 
 User = get_user_model()
 
@@ -26,9 +22,7 @@ class TestGenerateTemporary2FAToken(TestCase):
     def setUp(self):
         """Set up test user."""
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
+            username="testuser", email="test@example.com", password="testpass123"
         )
 
     def test_generate_temp_token_creates_valid_jwt(self):
@@ -38,14 +32,14 @@ class TestGenerateTemporary2FAToken(TestCase):
         # Verify token can be decoded
         token_obj = AccessToken(temp_token)
         assert token_obj is not None
-        assert token_obj['user_id'] == self.user.id
+        assert token_obj["user_id"] == self.user.id
 
     def test_generate_temp_token_has_temp_2fa_claim(self):
         """Test that temp token has temp_2fa=True claim."""
         temp_token = generate_temporary_2fa_token(self.user)
 
         token_obj = AccessToken(temp_token)
-        assert token_obj.get('temp_2fa') is True
+        assert token_obj.get("temp_2fa") is True
 
     def test_temp_token_used_for_both_verify_and_setup(self):
         """Test that the same temp token function is used for both scenarios."""
@@ -54,8 +48,8 @@ class TestGenerateTemporary2FAToken(TestCase):
 
         token_obj = AccessToken(temp_token)
         # Both scenarios use temp_2fa claim
-        assert token_obj.get('temp_2fa') is True
-        assert token_obj['user_id'] == self.user.id
+        assert token_obj.get("temp_2fa") is True
+        assert token_obj["user_id"] == self.user.id
 
 
 @pytest.mark.django_db
@@ -66,20 +60,20 @@ class TestGoogleCallbackScenarios:
     def user_no_2fa(self):
         """Create user without 2FA enabled."""
         return User.objects.create_user(
-            username='user_no_2fa',
-            email='no2fa@example.com',
-            password='testpass123',
-            is_2fa_enabled=False
+            username="user_no_2fa",
+            email="no2fa@example.com",
+            password="testpass123",
+            is_2fa_enabled=False,
         )
 
     @pytest.fixture
     def user_with_2fa(self):
         """Create user with 2FA enabled."""
         return User.objects.create_user(
-            username='user_with_2fa',
-            email='with2fa@example.com',
-            password='testpass123',
-            is_2fa_enabled=True
+            username="user_with_2fa",
+            email="with2fa@example.com",
+            password="testpass123",
+            is_2fa_enabled=True,
         )
 
     @override_settings(TWOFACTOR_ENFORCE_FOR_ALL_USERS=False)
@@ -94,7 +88,7 @@ class TestGoogleCallbackScenarios:
 
         # Verify access token contains user info
         token_obj = AccessToken(access_token)
-        assert token_obj['user_id'] == user_no_2fa.id
+        assert token_obj["user_id"] == user_no_2fa.id
 
     @override_settings(TWOFACTOR_ENFORCE_FOR_ALL_USERS=False)
     def test_scenario_2_temp_token_for_user_optin(self, user_with_2fa):
@@ -104,8 +98,8 @@ class TestGoogleCallbackScenarios:
 
         # Verify temp token is valid and has correct claim
         token_obj = AccessToken(temp_token)
-        assert token_obj['user_id'] == user_with_2fa.id
-        assert token_obj.get('temp_2fa') is True
+        assert token_obj["user_id"] == user_with_2fa.id
+        assert token_obj.get("temp_2fa") is True
 
     @override_settings(TWOFACTOR_ENFORCE_FOR_ALL_USERS=True)
     def test_scenario_3_temp_token_for_enforcement_no_setup(self, user_no_2fa):
@@ -121,8 +115,8 @@ class TestGoogleCallbackScenarios:
 
         # Verify temp token is valid and has correct claim
         token_obj = AccessToken(temp_token)
-        assert token_obj['user_id'] == user_no_2fa.id
-        assert token_obj.get('temp_2fa') is True
+        assert token_obj["user_id"] == user_no_2fa.id
+        assert token_obj.get("temp_2fa") is True
 
     @override_settings(TWOFACTOR_ENFORCE_FOR_ALL_USERS=True)
     def test_scenario_3_differentiated_by_url_param_not_token(self, user_no_2fa):
@@ -139,7 +133,7 @@ class TestGoogleCallbackScenarios:
         token_obj = AccessToken(temp_token)
 
         # Token has temp_2fa claim (same as scenario 2)
-        assert token_obj.get('temp_2fa') is True
+        assert token_obj.get("temp_2fa") is True
         # The difference is in the URL param (requires_2fa_setup vs requires_2fa)
 
     @override_settings(TWOFACTOR_ENFORCE_FOR_ALL_USERS=True)
@@ -155,7 +149,7 @@ class TestGoogleCallbackScenarios:
         token_obj = AccessToken(temp_token)
 
         # Should have temp_2fa claim (verify flow)
-        assert token_obj.get('temp_2fa') is True
+        assert token_obj.get("temp_2fa") is True
 
 
 class TestOAuthErrorHandling(TestCase):
@@ -166,19 +160,15 @@ class TestOAuthErrorHandling(TestCase):
         from rest_framework_simplejwt.exceptions import TokenError
 
         with pytest.raises(TokenError):
-            AccessToken('invalid_token_string')
+            AccessToken("invalid_token_string")
 
     def test_tokens_for_different_users_are_different(self):
         """Test that tokens for different users are distinct."""
         user1 = User.objects.create_user(
-            username='user1',
-            email='user1@example.com',
-            password='testpass123'
+            username="user1", email="user1@example.com", password="testpass123"
         )
         user2 = User.objects.create_user(
-            username='user2',
-            email='user2@example.com',
-            password='testpass123'
+            username="user2", email="user2@example.com", password="testpass123"
         )
 
         token1 = generate_temporary_2fa_token(user1)
@@ -191,5 +181,5 @@ class TestOAuthErrorHandling(TestCase):
         obj1 = AccessToken(token1)
         obj2 = AccessToken(token2)
 
-        assert obj1['user_id'] == user1.id
-        assert obj2['user_id'] == user2.id
+        assert obj1["user_id"] == user1.id
+        assert obj2["user_id"] == user2.id

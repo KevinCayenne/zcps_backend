@@ -9,7 +9,6 @@ import logging
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.mail import send_mail
 from django.utils import timezone
 
 from users.models import TwoFactorCode
@@ -17,7 +16,7 @@ from users.models import TwoFactorCode
 logger = logging.getLogger(__name__)
 
 
-def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
+def generate_2fa_code(user, settings_obj=None, verification_type="TWO_FACTOR"):
     """
     Generate a new 6-digit 2FA code for the specified user.
 
@@ -33,32 +32,29 @@ def generate_2fa_code(user, settings_obj=None, verification_type='TWO_FACTOR'):
     """
     # Invalidate any previous unused codes for this user with same verification type
     TwoFactorCode.objects.filter(
-        user=user,
-        is_used=False,
-        verification_type=verification_type
+        user=user, is_used=False, verification_type=verification_type
     ).update(is_used=True)
 
     # Generate 6-digit numeric code using cryptographically secure random
     code_length = 6  # Always use 6 digits
     expiration_seconds = settings.TWOFACTOR_CODE_EXPIRATION_SECONDS
 
-    code = ''.join([str(secrets.randbelow(10)) for _ in range(code_length)])
+    code = "".join([str(secrets.randbelow(10)) for _ in range(code_length)])
 
     # Calculate expiration time
     expires_at = timezone.now() + timedelta(seconds=expiration_seconds)
 
     # Create and return new code
     twofactor_code = TwoFactorCode.objects.create(
-        user=user,
-        code=code,
-        expires_at=expires_at,
-        verification_type=verification_type
+        user=user, code=code, expires_at=expires_at, verification_type=verification_type
     )
 
     return twofactor_code
 
 
-def send_2fa_code(user, code, preferred_2fa_method='None', verification_type='TWO_FACTOR'):
+def send_2fa_code(
+    user, code, preferred_2fa_method="None", verification_type="TWO_FACTOR"
+):
     """
     Send 2FA verification code to user via their preferred method.
 
@@ -83,18 +79,20 @@ def send_2fa_code(user, code, preferred_2fa_method='None', verification_type='TW
     preferred_2fa_method = preferred_2fa_method.upper()
 
     # Route to appropriate delivery method
-    if preferred_2fa_method == 'EMAIL':
+    if preferred_2fa_method == "EMAIL":
         return _send_2fa_code_via_email(user, code, verification_type)
-    elif preferred_2fa_method == 'PHONE':
+    elif preferred_2fa_method == "PHONE":
         raise NotImplementedError(
             "Phone 2FA delivery is not yet implemented. Please use EMAIL method."
         )
     else:
-        logger.error(f"Unknown 2FA method: {preferred_2fa_method}. Defaulting to EMAIL.")
+        logger.error(
+            f"Unknown 2FA method: {preferred_2fa_method}. Defaulting to EMAIL."
+        )
         return _send_2fa_code_via_email(user, code, verification_type)
 
 
-def _send_2fa_code_via_email(user, code, verification_type='TWO_FACTOR'):
+def _send_2fa_code_via_email(user, code, verification_type="TWO_FACTOR"):
     """
     Send 2FA verification code to user's email.
 
@@ -109,9 +107,8 @@ def _send_2fa_code_via_email(user, code, verification_type='TWO_FACTOR'):
         int: Number of emails sent (1 on success, 0 on failure)
     """
     # Customize subject and message based on verification type
-    subject = 'Your Two-Factor Authentication Code'
-    intro_text = 'Your two-factor authentication code is:'
-    purpose_text = 'two-factor authentication'
+    subject = "Your Two-Factor Authentication Code"
+    intro_text = "Your two-factor authentication code is:"
 
     # Get expiration time in minutes for display
     expiration_seconds = settings.TWOFACTOR_CODE_EXPIRATION_SECONDS
@@ -125,7 +122,8 @@ def _send_2fa_code_via_email(user, code, verification_type='TWO_FACTOR'):
 
 This code will expire in {expiration_minutes} minutes.
 
-If you didn't request this code, please ignore this email or contact support if you have concerns about your account security.
+If you didn't request this code, please ignore this email or contact support
+if you have concerns about your account security.
 
 Thank you,
 The Team
@@ -135,6 +133,7 @@ The Team
     recipient_list = [user.email]
 
     from django.core.mail import EmailMultiAlternatives
+
     email_msg = EmailMultiAlternatives(
         subject=subject,
         body=message,
