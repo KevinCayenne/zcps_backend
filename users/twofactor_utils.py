@@ -107,26 +107,25 @@ def _send_2fa_code_via_email(user, code, verification_type="TWO_FACTOR"):
         int: Number of emails sent (1 on success, 0 on failure)
     """
     # Customize subject and message based on verification type
-    subject = "Your Two-Factor Authentication Code"
-    intro_text = "Your two-factor authentication code is:"
+    subject = "您的雙因素驗證碼"
+    intro_text = "您的雙因素驗證碼為："
 
     # Get expiration time in minutes for display
     expiration_seconds = settings.TWOFACTOR_CODE_EXPIRATION_SECONDS
     expiration_minutes = expiration_seconds // 60
 
-    message = f"""Hi {user.first_name or user.username},
+    message = f"""您好 {user.first_name or user.username}，
 
 {intro_text}
 
 {code}
 
-This code will expire in {expiration_minutes} minutes.
+此驗證碼將於 {expiration_minutes} 分鐘後過期。
 
-If you didn't request this code, please ignore this email or contact support
-if you have concerns about your account security.
+如果您沒有請求此驗證碼，請忽略此郵件。如有任何帳戶安全疑慮，請聯繫客服。
 
-Thank you,
-The Team
+感謝您，
+團隊
 """
 
     from_email = settings.DEFAULT_FROM_EMAIL

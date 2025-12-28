@@ -116,8 +116,7 @@ def _send_cancellation_email(application):
         subject=subject,
         body=plain_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[],  # 使用空列表，避免在 To 欄位顯示收件人
-        bcc=[applicant_email],  # 使用密件副本保護個資
+        to=[applicant_email],
     )
     email_msg.attach_alternative(html_message, "text/html")
     email_msg.send(fail_silently=False)
