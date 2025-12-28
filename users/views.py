@@ -212,8 +212,7 @@ class SendRegistrationOTPView(APIView):
                 subject=subject,
                 body=message,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[],  # 使用空列表，避免在 To 欄位顯示收件人
-                bcc=[email],  # 使用密件副本保護個資
+                to=[email],
             )
             email_msg.send(fail_silently=False)
         except Exception as e:
@@ -1551,8 +1550,7 @@ class CustomUserViewSet(DjoserUserViewSet):
             subject=subject,
             body=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[],  # 使用空列表，避免在 To 欄位顯示收件人
-            bcc=[application.clinic.email],  # 使用密件副本保護個資
+            to=[application.clinic.email],
         )
         email_msg.attach_alternative(html_message, "text/html")
         email_msg.send(fail_silently=False)
