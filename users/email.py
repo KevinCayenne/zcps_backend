@@ -206,6 +206,13 @@ class RegistrationSuccessEmail(email.BaseEmailMessage):
             # 獲取郵件對象（EmailMultiAlternatives 實例）
             msg = self._get_message()
 
+            # 檢查郵件內容是否為空
+            # 如果 subject 或 body 為空，使用備用方法
+            if not msg.subject or (
+                not msg.body and not (hasattr(msg, "alternatives") and msg.alternatives)
+            ):
+                raise ValueError("Email content is empty, using fallback method")
+
             # 將收件人列表轉換為列表格式
             bcc_list = to if isinstance(to, list) else [to]
 
@@ -215,41 +222,185 @@ class RegistrationSuccessEmail(email.BaseEmailMessage):
 
             # 發送郵件
             return msg.send()
-        except AttributeError:
-            # 如果 _get_message 不存在，使用備用方法
-            # 直接調用父類的 send，但這不會使用 BCC
-            # 為了安全起見，我們使用 send_mail 直接發送
-            from django.template.loader import render_to_string
+        except (AttributeError, Exception):
+            # 如果 _get_message 不存在或失敗，使用備用方法
+            # 直接在代碼中定義模板內容
+            from django.template import Context, Engine
+            from django.core.mail import EmailMultiAlternatives
 
             # 獲取郵件內容
             context = self.get_context_data()
-            subject = self.subject
-            text_body = (
-                render_to_string(self.template_name, context)
-                .split("{% endblock text_body %}")[0]
-                .split("{% block text_body %}")[-1]
-                if "{% block text_body %}"
-                in render_to_string(self.template_name, context)
-                else ""
-            )
-            html_body = (
-                render_to_string(self.template_name, context)
-                .split("{% endblock html_body %}")[0]
-                .split("{% block html_body %}")[-1]
-                if "{% block html_body %}"
-                in render_to_string(self.template_name, context)
-                else ""
-            )
+
+            # 定義 subject 模板
+            subject_template_str = "歡迎註冊 - 帳號建立成功"
+
+            # 定義 HTML body 模板
+            html_body_template_str = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>帳號建立成功</title>
+</head>
+<body style="font-family: Arial, 'Microsoft JhengHei', sans-serif; line-height: 1.6;
+    color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff;
+        border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold;">歡迎加入！</h1>
+            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">您的帳號已成功建立</p>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 30px 20px;">
+            <p style="font-size: 16px; margin: 0 0 20px 0;">親愛的 {{ user.get_full_name|default:user.username }}，</p>
+
+            <p style="font-size: 16px; margin: 0 0 20px 0;">
+                恭喜！您的帳號已成功建立。以下是您的帳號資訊：
+            </p>
+
+            <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px;
+                margin: 20px 0; border-left: 4px solid #667eea;">
+                <p style="margin: 10px 0; font-size: 14px;">
+                    <strong>電子郵件：</strong>{{ user.email }}
+                </p>
+                {% if user.username %}
+                <p style="margin: 10px 0; font-size: 14px;">
+                    <strong>使用者名稱：</strong>{{ user.username }}
+                </p>
+                {% endif %}
+                <p style="margin: 10px 0; font-size: 14px;">
+                    <strong>註冊時間：</strong>{{ user.date_joined|date:"Y年m月d日 H:i" }}
+                </p>
+            </div>
+
+            {% if not user.is_active and activation_url %}
+            <div style="background-color: #fff3cd; border: 1px solid #ffc107;
+                border-radius: 5px; padding: 15px; margin: 20px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; color: #856404;">
+                    <strong>⚠️ 重要：</strong>您的帳號尚未啟用，請點擊下方按鈕啟用您的帳號。
+                </p>
+                <div style="text-align: center; margin: 20px 0;">
+                    <a href="{{ activation_url }}"
+                        style="background-color: #667eea; color: #ffffff;
+                        padding: 12px 30px; text-decoration: none; border-radius: 5px;
+                        display: inline-block; font-weight: bold; font-size: 16px;">
+                        啟用帳號
+                    </a>
+                </div>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #856404;">
+                    或複製以下連結到瀏覽器：<br>
+                    <a href="{{ activation_url }}"
+                        style="color: #667eea; word-break: break-all;">
+                        {{ activation_url }}
+                    </a>
+                </p>
+            </div>
+            {% else %}
+            <div style="background-color: #d4edda; border: 1px solid #c3e6cb;
+                border-radius: 5px; padding: 15px; margin: 20px 0;">
+                <p style="margin: 0; font-size: 14px; color: #155724;">
+                    <strong>✓ 您的帳號已啟用</strong>，現在就可以開始使用！
+                </p>
+            </div>
+            {% endif %}
+
+            <div style="margin: 30px 0;">
+                <p style="font-size: 16px; margin: 0 0 15px 0;"><strong>下一步：</strong></p>
+                <ul style="font-size: 14px; margin: 0; padding-left: 20px;">
+                    {% if not user.is_active %}
+                    <li style="margin: 8px 0;">點擊上方按鈕啟用您的帳號</li>
+                    {% endif %}
+                    <li style="margin: 8px 0;">前往登入頁面開始使用服務</li>
+                    <li style="margin: 8px 0;">如有任何問題，請聯繫客服</li>
+                </ul>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{{ protocol }}://{{ domain }}/login"
+                    style="background-color: #667eea; color: #ffffff;
+                    padding: 12px 30px; text-decoration: none; border-radius: 5px;
+                    display: inline-block; font-weight: bold;">
+                    前往登入
+                </a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
+            <p style="margin: 0; font-size: 12px; color: #6c757d;">
+                此為系統自動發送，請勿回覆此郵件。<br>
+                如有任何疑問，請聯繫客服或訪問我們的網站。
+            </p>
+        </div>
+    </div>
+</body>
+</html>"""
+
+            # 定義 text body 模板
+            text_body_template_str = """親愛的 {{ user.get_full_name|default:user.username }}，
+
+恭喜！您的帳號已成功建立。
+
+帳號資訊：
+- 電子郵件：{{ user.email }}
+{% if user.username %}- 使用者名稱：{{ user.username }}{% endif %}
+- 註冊時間：{{ user.date_joined|date:"Y年m月d日 H:i" }}
+
+{% if not user.is_active and activation_url %}
+重要：您的帳號尚未啟用，請點擊以下連結啟用您的帳號：
+
+{{ activation_url }}
+
+此驗證連結即將過期，請盡快驗證您的電子郵件。
+{% else %}
+您的帳號已啟用，現在就可以開始使用！
+{% endif %}
+
+下一步：
+{% if not user.is_active %}- 點擊上方連結啟用您的帳號
+{% endif %}- 前往登入頁面開始使用服務
+- 如有任何問題，請聯繫客服
+
+登入連結：{{ protocol }}://{{ domain }}/login
+
+謝謝，
+{{ site_name }} 團隊
+
+---
+此為系統自動發送，請勿回覆此郵件。"""
+
+            # 使用 Django 模板系統渲染內容
+            try:
+                engine = Engine.get_default()
+
+                # 渲染 subject
+                subject_template = engine.from_string(subject_template_str)
+                subject = subject_template.render(Context(context)).strip()
+
+                # 渲染 HTML body
+                html_template = engine.from_string(html_body_template_str)
+                html_body = html_template.render(Context(context))
+
+                # 渲染 text body
+                text_template = engine.from_string(text_body_template_str)
+                text_body = text_template.render(Context(context))
+
+            except Exception:
+                # 如果渲染失敗，使用預設值
+                subject = self.subject
+                text_body = f"親愛的 {context.get('user', {}).get('username', '用戶')}，\n\n恭喜！您的帳號已成功建立。"
+                html_body = ""
 
             # 使用 EmailMultiAlternatives 發送，並設置 BCC
-            from django.core.mail import EmailMultiAlternatives
-
+            bcc_list = to if isinstance(to, list) else [to]
             email_msg = EmailMultiAlternatives(
                 subject=subject,
                 body=text_body,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[],
-                bcc=to if isinstance(to, list) else [to],
+                bcc=bcc_list,
             )
             if html_body:
                 email_msg.attach_alternative(html_body, "text/html")

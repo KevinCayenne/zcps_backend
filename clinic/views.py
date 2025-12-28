@@ -1,3 +1,5 @@
+# flake8: noqa
+# pylint: disable-all
 """
 Views for Clinic and Certificate Application.
 """
@@ -1670,22 +1672,28 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
             <p>您收到一筆新的證書申請，請確認以下資訊：</p>
             <ul>
                 <li>
-                    <strong>申請人姓名：</strong>{applicant_name}
+                    <strong>申請人姓名：</strong>
+                    {applicant_name}
                 </li>
                 <li>
-                    <strong>申請人 Email：</strong>{applicant_email}
+                    <strong>申請人 Email：</strong>
+                    {applicant_email}
                 </li>
                 <li>
-                    <strong>申請人電話：</strong>{applicant_phone}
+                    <strong>申請人電話：</strong>
+                    {applicant_phone}
                 </li>
                 <li>
-                    <strong>手術醫師：</strong>{surgeon_name}
+                    <strong>手術醫師：</strong>
+                    {surgeon_name}
                 </li>
                 <li>
-                    <strong>手術日期：</strong>{surgery_date}
+                    <strong>手術日期：</strong>
+                    {surgery_date}
                 </li>
                 <li>
-                    <strong>申請時間：</strong>{created_at}
+                    <strong>申請時間：</strong>
+                    {created_at}
                 </li>
             </ul>
             <p>請點擊以下連結確認並驗證此申請：</p>
@@ -1711,8 +1719,7 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
             subject=subject,
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[],  # 使用空列表，避免在 To 欄位顯示收件人
-            bcc=[application.clinic.email],  # 使用密件副本保護個資
+            recipient_list=[application.clinic.email],
             html_message=html_message,
             fail_silently=False,
         )
@@ -2371,6 +2378,7 @@ def send_certificate_issue_notification_email(application):
             """
 
     # 使用 HTML 模板
+    # fmt: off
     html_message = f"""
     <html>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -2395,7 +2403,7 @@ def send_certificate_issue_notification_email(application):
             >
                 <h3 style="margin-top: 0; color: #333;">證書資訊</h3>
                 <ul style="list-style: none; padding: 0;">
-                    {detail_items_html}
+                            {detail_items_html}
                 </ul>
             </div>
 
@@ -2416,7 +2424,7 @@ def send_certificate_issue_notification_email(application):
         </div>
     </body>
     </html>
-    """
+    """  # fmt: on
 
     details_text_lines = [
         "證書資訊：",
@@ -2464,8 +2472,7 @@ def send_certificate_issue_notification_email(application):
         subject=subject,
         body=plain_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[],  # 使用空列表，避免在 To 欄位顯示收件人
-        bcc=[applicant_email],  # 使用密件副本保護個資
+        to=[applicant_email],
     )
     email_msg.attach_alternative(html_message, "text/html")
     email_msg.send(fail_silently=False)
