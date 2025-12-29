@@ -98,6 +98,7 @@ class UserSerializer(serializers.ModelSerializer):
             "information_source",
             "gender",
             "birth_date",
+            "privacy_policy_accepted",
             "is_active",
             "last_login",
             "date_joined",
@@ -490,6 +491,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "cert_record_group_id",
+            "privacy_policy_accepted",
         )
         read_only_fields = (
             "id",
