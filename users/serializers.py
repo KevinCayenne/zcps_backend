@@ -8,6 +8,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from djoser.serializers import UserCreateSerializer as DjoserUserCreateSerializer
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from users.enums import Gender
 
 User = get_user_model()
 
@@ -53,6 +54,28 @@ class UserSerializer(serializers.ModelSerializer):
         help_text="診所 ID 列表（寫入時用於設置該用戶的診所權限）",
     )
 
+    # 性別欄位
+    gender = serializers.ChoiceField(
+        choices=Gender.CHOICES,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="用戶性別",
+    )
+
+    # 生日欄位
+    birth_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text="用戶生日",
+    )
+
+    # 隱私權條款同意欄位
+    privacy_policy_accepted = serializers.BooleanField(
+        required=False,
+        help_text="用戶是否同意隱私權條款",
+    )
+
     class Meta:
         model = User
         fields = (
@@ -73,6 +96,8 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "occupation_category",
             "information_source",
+            "gender",
+            "birth_date",
             "is_active",
             "last_login",
             "date_joined",
@@ -95,6 +120,7 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "clinic_permissions",
             "cert_record_group_id",
+            "privacy_policy_accepted",
         )
 
     def get_clinic_permissions(self, obj):
@@ -224,6 +250,7 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
     - clinic_id
     - surgery_date
     - surgeon_name
+    - gender
 
     """
 
@@ -267,13 +294,36 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         required=True, write_only=True, help_text="手術醫師姓名"
     )
 
+    # 性別欄位
+    gender = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="用戶性別",
+    )
+
+    # 生日欄位
+    birth_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text="用戶生日",
+    )
+
+    # 隱私權條款同意欄位
+    privacy_policy_accepted = serializers.BooleanField(
+        required=False,
+        help_text="用戶是否同意隱私權條款",
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # 動態設置 choices，避免循環導入
-        from users.enums import InformationSource, OccupationCategory
+        from users.enums import InformationSource, OccupationCategory, Gender
 
         self.fields["occupation_category"].choices = OccupationCategory.CHOICES
         self.fields["information_source"].choices = InformationSource.CHOICES
+        self.fields["gender"].choices = Gender.CHOICES
 
     class Meta:
         model = get_user_model()  # 使用 get_user_model() 而不是直接使用 User
@@ -287,6 +337,9 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "phone_number",
             "occupation_category",
             "information_source",
+            "gender",
+            "birth_date",
+            "privacy_policy_accepted",
             "clinic_id",
             "surgery_date",
             "surgeon_name",
@@ -300,6 +353,9 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "password": {"write_only": True},
             "occupation_category": {"required": True},
             "information_source": {"required": True},
+            "gender": {"required": False},
+            "birth_date": {"required": False},
+            "privacy_policy_accepted": {"required": False},
             "clinic_id": {"required": True},
             "surgery_date": {"required": True},
             "surgeon_name": {"required": True},
@@ -423,6 +479,8 @@ class ClientUserSerializer(serializers.ModelSerializer):
             "twofa_setup_date",
             "information_source",
             "occupation_category",
+            "gender",
+            "birth_date",
             "last_2fa_verification",
             "preferred_2fa_method",
             "role",
@@ -446,6 +504,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             "last_login",
             "date_joined",
             "cert_record_group_id",
+            "privacy_policy_accepted",
         )
 
 
@@ -495,13 +554,36 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         help_text="怎麼知道LBV認證活動資訊",
     )
 
+    # 性別欄位
+    gender = serializers.ChoiceField(
+        choices=[],  # 將在 __init__ 中設置
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="用戶性別",
+    )
+
+    # 生日欄位
+    birth_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text="用戶生日",
+    )
+
+    # 隱私權條款同意欄位
+    privacy_policy_accepted = serializers.BooleanField(
+        required=False,
+        help_text="用戶是否同意隱私權條款",
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # 動態設置 choices，避免循環導入
-        from users.enums import InformationSource, OccupationCategory
+        from users.enums import InformationSource, OccupationCategory, Gender
 
         self.fields["occupation_category"].choices = OccupationCategory.CHOICES
         self.fields["information_source"].choices = InformationSource.CHOICES
+        self.fields["gender"].choices = Gender.CHOICES
 
     class Meta(DjoserUserCreateSerializer.Meta):
         model = User
@@ -514,6 +596,9 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             "last_name",
             "phone_number",
             "occupation_category",
+            "gender",
+            "birth_date",
+            "privacy_policy_accepted",
             "clinic_id",
             "consultation_clinic_id",
             "surgeon_name",
