@@ -55,3 +55,19 @@ class InformationSource:
         (INTERNET_SEARCH, _("網路搜尋")),
         (OTHER, _("其他")),
     ]
+
+
+class Gender:
+    """
+    性別枚舉
+    """
+
+    MALE = "male"
+    FEMALE = "female"
+    OTHER = "other"
+
+    CHOICES = [
+        (MALE, _("男性")),
+        (FEMALE, _("女性")),
+        (OTHER, _("其他")),
+    ]

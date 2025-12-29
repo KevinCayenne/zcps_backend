@@ -9,7 +9,7 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
-from users.enums import UserRole, InformationSource, OccupationCategory
+from users.enums import UserRole, InformationSource, OccupationCategory, Gender
 
 
 class User(AbstractUser):
@@ -131,6 +131,31 @@ class User(AbstractUser):
         choices=OccupationCategory.CHOICES,
         default=OccupationCategory.OTHER,
         help_text=_("申請人的職業類別"),
+    )
+
+    # 性別
+    gender = models.CharField(
+        verbose_name=_("性別"),
+        max_length=10,
+        choices=Gender.CHOICES,
+        blank=True,
+        null=True,
+        help_text=_("用戶性別"),
+    )
+
+    # 生日
+    birth_date = models.DateField(
+        verbose_name=_("生日"),
+        blank=True,
+        null=True,
+        help_text=_("用戶生日"),
+    )
+
+    # 是否同意隱私權條款
+    privacy_policy_accepted = models.BooleanField(
+        verbose_name=_("是否同意隱私權條款"),
+        default=False,
+        help_text=_("用戶是否同意隱私權條款"),
     )
 
     # Add timestamp fields for auditing
