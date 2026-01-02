@@ -21,6 +21,7 @@ from users.certificate_views import (
     IssueCertificatesToNewGroupView,
     IssueCertificatesToExistingGroupView,
     IssueCertificatesWithTemplateView,
+    RevokeCertificateView,
 )
 from clinic.views import (
     ClinicViewSet,
@@ -150,6 +151,11 @@ urlpatterns = [
         "api/certificates/get-pdf/",
         GetCertificatePdfView.as_view(),
         name="get_certificate_pdf",
+    ),
+    path(
+        "api/certificates/revoke-certificate/",
+        RevokeCertificateView.as_view(),
+        name="revoke_certificate",
     ),
 ]
 

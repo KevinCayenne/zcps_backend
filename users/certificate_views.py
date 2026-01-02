@@ -5,6 +5,7 @@ Provides API endpoints for fetching certificate templates and issuing certificat
 """
 
 import logging
+import json
 import requests
 from rest_framework import status, serializers
 from rest_framework.views import APIView
@@ -1070,6 +1071,14 @@ def build_certs_data_from_template(
     """
     key_list = template_data.get("content", {}).get("keyList", [])
 
+    # 整理並打印 key_list（格式化 JSON 輸出）
+    if settings.DEBUG:
+        print("\n" + "=" * 80)
+        print("[證書模板] key_list:")
+        print("=" * 80)
+        print(json.dumps(key_list, indent=2, ensure_ascii=False))
+        print("=" * 80 + "\n")
+
     # 如果提供了 certificate_application，自動帶入相關資料
     if certificate_application:
         user = certificate_application.user
@@ -1150,14 +1159,26 @@ def build_certs_data_from_template(
         surgery_date = ""
         cert_number = ""
 
-    # 根據模板的 keyList 填入用戶提供的資料或自動帶入的資料
+    # 收集所有 tx- 開頭的欄位（必須包含所有 tx- 欄位，即使值為空）
+    tx_keys = []
     for key_item in key_list:
-        key = key_item.get("key")
+        key = key_item.get("key", "")
+        if key and key.startswith("tx-"):
+            tx_keys.append((key, key_item))
 
-        # 只保留 tx- 開頭的欄位
-        if not key or not key.startswith("tx-"):
-            continue
+    # 調試：打印找到的 tx- 欄位
+    if settings.DEBUG:
+        print(f"[DEBUG] 找到 {len(tx_keys)} 個 tx- 開頭的欄位:")
+        for key, key_item in tx_keys:
+            desc = key_item.get("description", "")
+            print(f"  - {key}: {desc}")
+        print(
+            f"[DEBUG] cert_data 初始有 {len(cert_data)} 個欄位: {list(cert_data.keys())}"
+        )
 
+    # 根據模板的 keyList 填入用戶提供的資料或自動帶入的資料
+    # 確保所有 tx- 開頭的欄位都被包含
+    for key, key_item in tx_keys:
         # 優先順序：用戶提供的值（非空） > certificate_data 中的值（非空） > 根據 key 自動填充 > 空值
         user_value = user_data.get(key) if user_data else None
         cert_data_value = None
@@ -1206,6 +1227,12 @@ def build_certs_data_from_template(
                 cert_data[key] = ""  # 日期類型使用空字符串
             else:
                 cert_data[key] = ""  # 其他類型使用空字符串
+
+    # 調試：打印最終的 cert_data
+    if settings.DEBUG:
+        print(f"[DEBUG] 最終 cert_data 有 {len(cert_data)} 個欄位:")
+        print(json.dumps(cert_data, indent=2, ensure_ascii=False))
+        print("=" * 80 + "\n")
 
     return [cert_data]
 
@@ -1838,3 +1865,320 @@ def get_pdf_url(pdf_id: str) -> Tuple[dict[str, Any] | str, int]:
             {"error": f"獲取 PDF URL 失敗: {str(e)}"},
             status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+def revoke_certificate(cert_id: int) -> Tuple[Optional[Dict[str, Any]], int]:
+    """
+    撤銷指定的證書。
+
+    Args:
+        cert_id: 證書 ID（整數）
+
+    Returns:
+        Tuple[Optional[Dict], int]: (響應數據, HTTP 狀態碼)
+        - 成功時返回 (response_data, status_code)
+        - 錯誤時返回 (error_dict, status_code)
+
+    Raises:
+        不拋出異常，所有錯誤都通過返回值處理
+    """
+    # 從設置中獲取外部 API 的 base URL 和 API key
+    external_api_base_url = getattr(
+        settings,
+        "CERTIFICATE_API_BASE_URL",
+        "https://tc-platform-service.turingcerts.com",
+    )
+
+    api_key = getattr(settings, "CERTIFICATE_API_KEY", "")
+
+    if not api_key:
+        logger.error("CERTIFICATE_API_KEY 未配置")
+        return (
+            {"error": "API key 未配置，請聯繫管理員"},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    # 構建外部 API URL
+    external_api_url = (
+        f"{external_api_base_url}/openapi/v1/cert-records/revoke-certificate"
+    )
+
+    # 準備請求參數和標頭
+    params = {"id": cert_id}
+    headers = {
+        "x-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+    try:
+        # 調用外部 API
+        response = requests.post(
+            external_api_url, params=params, headers=headers, timeout=30
+        )
+
+        # 記錄響應狀態
+        logger.info(
+            f"External API call to {external_api_url} returned status {response.status_code} "
+            f"for cert_id={cert_id}"
+        )
+
+        # 處理不同的 HTTP 狀態碼
+        # 200 和 201 都表示成功
+        if response.status_code in [200, 201]:
+            response_data = response.json()
+            business_code = response_data.get("businessCode", 0)
+
+            if business_code == 0:
+                # 成功撤銷證書
+                # 根據原始狀態碼返回對應的 HTTP 狀態碼
+                return (
+                    response_data,
+                    (
+                        status.HTTP_200_OK
+                        if response.status_code == 200
+                        else status.HTTP_201_CREATED
+                    ),
+                )
+            elif business_code == 9999:
+                # 證書不存在
+                return (response_data, status.HTTP_404_NOT_FOUND)
+            elif business_code == 9994:
+                # 此 CC 帳號不擁有此證書
+                return (response_data, status.HTTP_403_FORBIDDEN)
+            elif business_code == 9792:
+                # 證書狀態不是 enabled
+                return (response_data, status.HTTP_403_FORBIDDEN)
+            else:
+                # 未知的業務代碼，返回原始響應
+                return (
+                    response_data,
+                    (
+                        status.HTTP_200_OK
+                        if response.status_code == 200
+                        else status.HTTP_201_CREATED
+                    ),
+                )
+
+        elif response.status_code == 403:
+            # 外部 API 返回 403，表示狀態不是 enabled 或沒有權限
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_403_FORBIDDEN)
+            except ValueError:
+                return (
+                    {"error": "無法撤銷證書，證書狀態不是 enabled 或沒有權限"},
+                    status.HTTP_403_FORBIDDEN,
+                )
+
+        elif response.status_code == 404:
+            # 外部 API 返回 404，表示證書或 CC 帳號不存在
+            try:
+                response_data = response.json()
+                return (response_data, status.HTTP_404_NOT_FOUND)
+            except ValueError:
+                return (
+                    {"error": "指定的證書或 CC 帳號不存在"},
+                    status.HTTP_404_NOT_FOUND,
+                )
+
+        else:
+            # 其他 HTTP 錯誤
+            logger.error(
+                f"External API returned unexpected status {response.status_code}: {response.text}"
+            )
+            return (
+                {
+                    "error": f"外部 API 返回錯誤狀態碼: {response.status_code}",
+                    "details": response.text[:500],
+                },
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout when calling external API for cert_id={cert_id}")
+        return (
+            {"error": "外部 API 請求超時，請稍後再試"},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    except requests.exceptions.ConnectionError:
+        logger.error(
+            f"Connection error when calling external API for cert_id={cert_id}"
+        )
+        return (
+            {"error": "無法連接到外部 API，請檢查網路連接"},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request exception when calling external API: {str(e)}")
+        return (
+            {"error": f"外部 API 請求失敗: {str(e)}"},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    except ValueError as e:
+        # JSON 解析錯誤
+        logger.error(f"JSON decode error: {str(e)}")
+        return (
+            {"error": "外部 API 返回的響應格式無效"},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    except Exception as e:
+        # 其他未預期的錯誤
+        logger.error(
+            f"Unexpected error when calling external API: {str(e)}", exc_info=True
+        )
+        return (
+            {"error": "發生未預期的錯誤，請聯繫管理員"},
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+class RevokeCertificateView(APIView):
+    """
+    API endpoint to revoke a certificate.
+
+    POST /api/certificates/revoke-certificate/
+    Accepts cert_id as query parameter. API key is configured on the backend.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=["Certificates"],
+        summary="Revoke certificate by ID",
+        description="""
+        撤銷指定的證書。
+
+        **流程說明：**
+        1. 接收 cert_id 參數
+        2. 使用後端配置的 API key 調用外部 API `/openapi/v1/cert-records/revoke-certificate`
+        3. 返回撤銷結果或錯誤訊息
+
+        **業務代碼說明：**
+        - 0: 成功撤銷指定的證書
+        - 9999: 指定的證書不存在
+        - 9994: 此 CC 帳號不擁有此證書
+        - 9792: 證書狀態不是 enabled（無法撤銷）
+
+        **注意事項：**
+        - API key 已在後端配置，無需前端傳遞
+        - cert_id 必須是有效的整數
+        - 只有狀態為 enabled 的證書才能被撤銷
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="證書的 ID",
+            ),
+        ],
+        examples=[
+            OpenApiExample(
+                "Success Response",
+                value={
+                    "success": True,
+                    "code": 0,
+                    "businessCode": 0,
+                    "message": {
+                        "executionTime": "2025-12-28T10:41:15.447Z",
+                        "message": "Successfully revoked designated certificate.",
+                    },
+                    "content": {},
+                },
+                response_only=True,
+                status_codes=["200"],
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description="成功撤銷指定的證書",
+                response=inline_serializer(
+                    name="RevokeCertificateSuccessResponse",
+                    fields={
+                        "success": serializers.BooleanField(help_text="請求是否成功"),
+                        "code": serializers.IntegerField(help_text="HTTP 狀態碼"),
+                        "businessCode": serializers.IntegerField(
+                            help_text="業務代碼 (0=成功)"
+                        ),
+                        "message": serializers.DictField(help_text="訊息物件"),
+                        "content": serializers.DictField(help_text="內容物件"),
+                    },
+                ),
+            ),
+            400: OpenApiResponse(
+                description="Bad Request - 缺少必要參數",
+                response=inline_serializer(
+                    name="RevokeCertificateBadRequestResponse",
+                    fields={"error": serializers.CharField(help_text="錯誤訊息")},
+                ),
+            ),
+            403: OpenApiResponse(
+                description="Forbidden - 證書狀態不是 enabled 或此帳號不擁有此證書",
+                response=inline_serializer(
+                    name="RevokeCertificateForbiddenResponse",
+                    fields={
+                        "success": serializers.BooleanField(),
+                        "code": serializers.IntegerField(),
+                        "businessCode": serializers.IntegerField(),
+                        "message": serializers.DictField(),
+                    },
+                ),
+            ),
+            404: OpenApiResponse(
+                description="Not Found - 指定的證書或 CC 帳號不存在",
+                response=inline_serializer(
+                    name="RevokeCertificateNotFoundResponse",
+                    fields={
+                        "success": serializers.BooleanField(),
+                        "code": serializers.IntegerField(),
+                        "businessCode": serializers.IntegerField(),
+                        "message": serializers.DictField(),
+                    },
+                ),
+            ),
+            500: OpenApiResponse(
+                description="Internal Server Error - 外部 API 調用失敗",
+                response=inline_serializer(
+                    name="RevokeCertificateServerErrorResponse",
+                    fields={"error": serializers.CharField(help_text="錯誤訊息")},
+                ),
+            ),
+        },
+    )
+    def post(self, request):
+        """
+        撤銷指定的證書。
+
+        Args:
+            request: HTTP 請求物件，包含 id 查詢參數
+
+        Returns:
+            Response: 包含撤銷結果的響應，或錯誤訊息
+        """
+        # 獲取查詢參數
+        cert_id = request.query_params.get("id")
+
+        # 驗證必要參數
+        if not cert_id:
+            return Response(
+                {"error": "id 參數是必需的"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 驗證 cert_id 是否為整數
+        try:
+            cert_id = int(cert_id)
+        except ValueError:
+            return Response(
+                {"error": "id 必須是有效的整數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 調用 revoke_certificate 函數撤銷證書
+        response_data, status_code = revoke_certificate(cert_id)
+        return Response(response_data, status=status_code)
