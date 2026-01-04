@@ -611,6 +611,8 @@ class SubmitCertificateApplicationView(APIView):
                     user=user,
                     clinic=clinic,
                     certificate_data=certificate_data,
+                    surgeon_name=certificate_data.get("surgeon_name"),
+                    surgery_date=certificate_data.get("surgery_date"),
                     create_user=request.user if request.user.is_authenticated else None,
                 )
 
@@ -675,8 +677,8 @@ class SubmitCertificateApplicationView(APIView):
         applicant_name = application.get_applicant_name()
         applicant_email = application.get_applicant_email()
         applicant_phone = application.get_applicant_phone()
-        surgeon_name = application.certificate_data.get("surgeon_name", "未提供")
-        surgery_date = application.certificate_data.get("surgery_date", "未提供")
+        surgeon_name = application.get_surgeon_name()
+        surgery_date = application.get_surgery_date()
 
         submitted_at = application.create_time.strftime("%Y-%m-%d %H:%M:%S")
         button_styles = (
@@ -1645,8 +1647,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         applicant_name = application.get_applicant_name()
         applicant_email = application.get_applicant_email()
         applicant_phone = application.get_applicant_phone()
-        surgeon_name = application.certificate_data.get("surgeon_name", "未提供")
-        surgery_date = application.certificate_data.get("surgery_date", "未提供")
+        surgeon_name = application.get_surgeon_name()
+        surgery_date = application.get_surgery_date()
         created_at = application.create_time.strftime("%Y-%m-%d %H:%M:%S")
         token_expiry = (
             application.token_expires_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -1808,7 +1810,7 @@ class IssueCertificateView(APIView):
     This endpoint issues a certificate for a verified certificate application.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     @extend_schema(
         tags=["Certificates"],
@@ -1958,6 +1960,21 @@ class IssueCertificateView(APIView):
         發放證書申請的證書
         """
         application_id = request.data.get("application_id")
+        verify_token = request.data.get("verify_token")
+        if not verify_token:
+            return Response(
+                {"error": "缺少 verify_token 參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verify_token_obj = CertificateApplication.objects.get(
+            verification_token=verify_token
+        )
+        if not verify_token_obj:
+            return Response(
+                {"error": "驗證 token 不存在"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         if not application_id:
             return Response(
@@ -2407,7 +2424,7 @@ def send_certificate_issue_notification_email(application):
     subject = "證書發放通知 - 您的證書已成功發放"
 
     # 獲取申請人資訊
-    applicant_name = application.get_applicant_name() or "申請人"
+    applicant_name = application.get_applicant_name()
     clinic_name = application.clinic.name if application.clinic else "診所"
     certificate_number = application.certificate_number or "待生成"
     issued_at = (
@@ -2428,10 +2445,8 @@ def send_certificate_issue_notification_email(application):
         ("證書序號", certificate_number),
         ("診所名稱", clinic_name),
     ]
-    if application.surgeon_name:
-        detail_items.append(("手術醫師", application.surgeon_name))
-    if application.surgery_date:
-        detail_items.append(("手術日期", application.surgery_date.strftime("%Y-%m-%d")))
+    detail_items.append(("手術醫師", application.get_surgeon_name()))
+    detail_items.append(("手術日期", application.get_surgery_date()))
     detail_items.append(("發放時間", issued_at))
 
     detail_items_html = "".join(

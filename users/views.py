@@ -811,8 +811,8 @@ class CustomUserViewSet(DjoserUserViewSet):
                         application = CertificateApplication(
                             user=user,
                             clinic=clinic,
-                            surgeon_name=certificate_fields.get("surgeon_name"),
-                            surgery_date=certificate_fields.get("surgery_date"),
+                            surgeon_name=certificate_fields["surgeon_name"],
+                            surgery_date=certificate_fields["surgery_date"],
                             certificate_data=certificate_data,
                             create_user=user,
                         )

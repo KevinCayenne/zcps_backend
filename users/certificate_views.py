@@ -2181,4 +2181,42 @@ class RevokeCertificateView(APIView):
 
         # 調用 revoke_certificate 函數撤銷證書
         response_data, status_code = revoke_certificate(cert_id)
+
+        # 如果撤銷成功（200 或 201），更新對應的證書申請狀態為「已取消」
+        if status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
+            if response_data and isinstance(response_data, dict):
+                business_code = response_data.get("businessCode", -1)
+                # 只有業務代碼為 0 時才表示真正成功
+                if business_code == 0:
+                    try:
+                        # 導入 CertificateApplication 和狀態枚舉
+                        from clinic.models import CertificateApplication
+                        from clinic.enums import CertificateApplicationStatus
+
+                        # 通過 certificate_group_id 查找對應的證書申請
+                        # cert_id 就是 certificate_group_id
+                        applications = CertificateApplication.objects.filter(
+                            certificate_group_id=cert_id
+                        )
+
+                        # 更新所有相關申請的狀態為「已取消」
+                        updated_count = applications.update(
+                            status=CertificateApplicationStatus.CANCELLED
+                        )
+
+                        if updated_count > 0:
+                            logger.info(
+                                f"成功撤銷證書 {cert_id}，已更新 {updated_count} 個證書申請狀態為「已取消」"
+                            )
+                        else:
+                            logger.warning(
+                                f"成功撤銷證書 {cert_id}，但未找到對應的證書申請記錄（certificate_group_id={cert_id}）"
+                            )
+                    except Exception as e:
+                        # 即使更新狀態失敗，也不影響撤銷操作的成功響應
+                        logger.error(
+                            f"撤銷證書 {cert_id} 成功，但更新證書申請狀態失敗: {e}",
+                            exc_info=True,
+                        )
+
         return Response(response_data, status=status_code)
