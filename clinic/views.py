@@ -611,6 +611,8 @@ class SubmitCertificateApplicationView(APIView):
                     user=user,
                     clinic=clinic,
                     certificate_data=certificate_data,
+                    surgeon_name=certificate_data.get("surgeon_name"),
+                    surgery_date=certificate_data.get("surgery_date"),
                     create_user=request.user if request.user.is_authenticated else None,
                 )
 
@@ -675,8 +677,8 @@ class SubmitCertificateApplicationView(APIView):
         applicant_name = application.get_applicant_name()
         applicant_email = application.get_applicant_email()
         applicant_phone = application.get_applicant_phone()
-        surgeon_name = application.certificate_data.get("surgeon_name", "未提供")
-        surgery_date = application.certificate_data.get("surgery_date", "未提供")
+        surgeon_name = application.get_surgeon_name()
+        surgery_date = application.get_surgery_date()
 
         submitted_at = application.create_time.strftime("%Y-%m-%d %H:%M:%S")
         button_styles = (
@@ -1645,8 +1647,8 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         applicant_name = application.get_applicant_name()
         applicant_email = application.get_applicant_email()
         applicant_phone = application.get_applicant_phone()
-        surgeon_name = application.certificate_data.get("surgeon_name", "未提供")
-        surgery_date = application.certificate_data.get("surgery_date", "未提供")
+        surgeon_name = application.get_surgeon_name()
+        surgery_date = application.get_surgery_date()
         created_at = application.create_time.strftime("%Y-%m-%d %H:%M:%S")
         token_expiry = (
             application.token_expires_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -1808,7 +1810,7 @@ class IssueCertificateView(APIView):
     This endpoint issues a certificate for a verified certificate application.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     @extend_schema(
         tags=["Certificates"],
@@ -1821,9 +1823,7 @@ class IssueCertificateView(APIView):
         2. 驗證申請狀態（必須是 verified 或 pending）
         3. 獲取證書模板資訊
         4. 構建證書資料
-        5. 根據環境變數 `CERTIFICATE_GROUP_ID` 決定發證方式：
-           - 如果環境變數 `CERTIFICATE_GROUP_ID` 已配置：發證到現有群組
-           - 如果環境變數未配置：發證到新群組
+        5. 發證到證書群組
         6. 更新申請狀態為已發證（ISSUED）
         7. 保存證書 hash（如果返回）
         8. 返回證書群組 ID 和 hash
@@ -1832,7 +1832,6 @@ class IssueCertificateView(APIView):
         - `application_id`: 證書申請 ID
 
         **可選欄位：**
-        - `certRecordGroupId`: 已移除，改為從環境變數 `CERTIFICATE_GROUP_ID` 獲取
         - `name`: 證書群組名稱（僅在創建新群組時使用，默認：證書群組_{templateId}）
         - `certificateData`: 證書資料（如果未提供，將使用申請時提交的資料）
         - `isDownloadButtonEnabled`: 是否啟用下載按鈕（默認：true）
@@ -1961,6 +1960,21 @@ class IssueCertificateView(APIView):
         發放證書申請的證書
         """
         application_id = request.data.get("application_id")
+        verify_token = request.data.get("verify_token")
+        if not verify_token:
+            return Response(
+                {"error": "缺少 verify_token 參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verify_token_obj = CertificateApplication.objects.get(
+            verification_token=verify_token
+        )
+        if not verify_token_obj:
+            return Response(
+                {"error": "驗證 token 不存在"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         if not application_id:
             return Response(
@@ -2080,6 +2094,65 @@ class IssueCertificateView(APIView):
             template_data, user_certificate_data, certificate_application=application
         )
 
+        # 確保 certs_data 包含所有必需的欄位（9個key）
+        # 從模板中獲取所有 tx- 開頭的欄位
+        key_list = template_data.get("content", {}).get("keyList", [])
+        all_tx_keys = [
+            item.get("key")
+            for item in key_list
+            if item.get("key", "").startswith("tx-")
+        ]
+
+        # 確保 certs_data[0] 包含所有 tx- 欄位
+        if certs_data and len(certs_data) > 0:
+            cert_data = certs_data[0]
+            missing_keys = []
+
+            # 檢查並添加缺少的 tx- 欄位
+            for tx_key in all_tx_keys:
+                if tx_key not in cert_data:
+                    # 如果欄位不存在，設置為空字符串
+                    key_item = next(
+                        (item for item in key_list if item.get("key") == tx_key), None
+                    )
+                    if key_item:
+                        key_type = key_item.get("type", "")
+                        if "number" in key_type or "integer" in key_type:
+                            cert_data[tx_key] = None
+                        else:
+                            cert_data[tx_key] = ""
+                    missing_keys.append(tx_key)
+
+            # 確保 cert_data 只包含模板中實際存在的欄位
+            # 移除任何不在模板 keyList 中的 tx- 欄位
+            keys_to_remove = []
+            for key in cert_data.keys():
+                if key.startswith("tx-") and key not in all_tx_keys:
+                    keys_to_remove.append(key)
+
+            for key in keys_to_remove:
+                del cert_data[key]
+                if settings.DEBUG:
+                    print(f"[WARNING] 移除了不在模板中的欄位: {key}")
+
+            # 調試信息
+            if settings.DEBUG:
+                import json
+
+                print("\n" + "=" * 80)
+                print("[DEBUG] certs_data 欄位檢查:")
+                print("=" * 80)
+                print(f"模板要求的 tx- 欄位數量: {len(all_tx_keys)}")
+                print(f"模板中的 tx- 欄位: {all_tx_keys}")
+                print(f"當前 cert_data 的欄位數量: {len(cert_data)}")
+                print(f"缺少的欄位: {missing_keys if missing_keys else '無'}")
+                print(f"所有欄位: {list(cert_data.keys())}")
+                print("\n完整的 cert_data:")
+                print(json.dumps(cert_data, indent=2, ensure_ascii=False))
+                print("=" * 80 + "\n")
+
+        # return Response(certs_data, status=status.HTTP_200_OK)
+
         # 步驟 3: 構建發證請求數據
         from datetime import datetime, timezone as tz
 
@@ -2164,7 +2237,18 @@ class IssueCertificateView(APIView):
                 issue_request_data["name"] = request.data.get("name")
 
         # 步驟 4: 發證（根據是否提供 certRecordGroupId 決定發證方式）
-        print(issue_request_data)
+        if settings.DEBUG:
+            import json
+
+            print("\n" + "=" * 80)
+            print("[DEBUG] 發證請求數據:")
+            print("=" * 80)
+            print(json.dumps(issue_request_data, indent=2, ensure_ascii=False))
+            print("=" * 80 + "\n")
+
+        response_data = None
+        status_code = None
+        certificate_group_id = None
 
         try:
             if issue_to_existing_group:
@@ -2178,31 +2262,56 @@ class IssueCertificateView(APIView):
                     issue_request_data
                 )
                 # 發證到新群組時，從響應中獲取群組 ID
-                certificate_group_id = response_data.get("content", {}).get("id")
-                application.user.cert_record_group_id = certificate_group_id
-                application.user.save()
-                logger.info(
-                    f"Certificate group ID {certificate_group_id} saved to user {application.user.id}"
-                )
+                if response_data and isinstance(response_data, dict):
+                    content = response_data.get("content", {})
+                    if isinstance(content, dict):
+                        certificate_group_id = content.get("id")
+                    else:
+                        certificate_group_id = content
+
+                    if certificate_group_id:
+                        application.user.cert_record_group_id = certificate_group_id
+                        application.user.save()
+                        logger.info(
+                            f"Certificate group ID {certificate_group_id} saved to user {application.user.id}"
+                        )
         except Exception as e:
             logger.error(
                 f"Failed to issue certificate for application {application.id}: {e}",
                 exc_info=True,
             )
             return Response(
-                {"error": "發證失敗，請稍後再試"},
+                {"error": "發證失敗，請稍後再試", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # 檢查響應狀態
+        if status_code is None:
+            return Response(
+                {"error": "發證失敗，未收到響應"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         if status_code not in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
+            error_message = "發證失敗"
+            if response_data and isinstance(response_data, dict):
+                error_message = (
+                    response_data.get("message", {}).get("message", error_message)
+                    if isinstance(response_data.get("message"), dict)
+                    else error_message
+                )
             return Response(
-                {"error": "發證失敗", "details": response_data}, status=status_code
+                {"error": error_message, "details": response_data},
+                status=status_code,
             )
 
         # 步驟 5: 從響應中提取 hash 值
         # hash 可能在 content 中，也可能在 certsData 的每個證書對象中
         certificate_hash = None
-        content = response_data.get("content") or {}
+        if response_data and isinstance(response_data, dict):
+            content = response_data.get("content") or {}
+        else:
+            content = {}
 
         # 確保 content 是字典類型
         if not isinstance(content, dict):
@@ -2315,7 +2424,7 @@ def send_certificate_issue_notification_email(application):
     subject = "證書發放通知 - 您的證書已成功發放"
 
     # 獲取申請人資訊
-    applicant_name = application.get_applicant_name() or "申請人"
+    applicant_name = application.get_applicant_name()
     clinic_name = application.clinic.name if application.clinic else "診所"
     certificate_number = application.certificate_number or "待生成"
     issued_at = (
@@ -2336,10 +2445,8 @@ def send_certificate_issue_notification_email(application):
         ("證書序號", certificate_number),
         ("診所名稱", clinic_name),
     ]
-    if application.surgeon_name:
-        detail_items.append(("手術醫師", application.surgeon_name))
-    if application.surgery_date:
-        detail_items.append(("手術日期", application.surgery_date.strftime("%Y-%m-%d")))
+    detail_items.append(("手術醫師", application.get_surgeon_name()))
+    detail_items.append(("手術日期", application.get_surgery_date()))
     detail_items.append(("發放時間", issued_at))
 
     detail_items_html = "".join(

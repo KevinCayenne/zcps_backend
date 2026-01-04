@@ -15,7 +15,16 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Load secrets from .env file
-load_dotenv(BASE_DIR / ".env.dev")
+# override=True: 覆蓋已存在的環境變數（優先使用 .env 文件中的值）
+# 這樣可以確保 .env 文件中的值會覆蓋系統環境變數
+env_file = BASE_DIR / ".env.dev"
+if env_file.exists():
+    load_dotenv(env_file, override=True)
+else:
+    # 如果 .env.dev 不存在，嘗試加載 .env
+    env_file = BASE_DIR / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=True)
 
 # Django secret key
 SECRET_KEY = os.environ.get(
@@ -50,11 +59,6 @@ CERTIFICATE_TEMPLATE_ID = (
     else None
 )
 CERTIFICATE_PASSWORD = os.environ.get("CERTIFICATE_PASSWORD")
-CERTIFICATE_GROUP_ID = (
-    int(os.environ.get("CERTIFICATE_GROUP_ID", "0"))
-    if os.environ.get("CERTIFICATE_GROUP_ID", "").strip()
-    else None
-)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

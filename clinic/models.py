@@ -433,6 +433,18 @@ class CertificateApplication(BaseModel):
             return self.user.phone_number
         return None
 
+    def get_surgeon_name(self):
+        """
+        獲取手術醫師姓名（從 certificate_data 獲取）
+        """
+        return self.surgeon_name or self.certificate_data.get("surgeon_name", "未提供")
+
+    def get_surgery_date(self):
+        """
+        獲取手術執行日期（從 certificate_data 獲取）
+        """
+        return self.surgery_date or self.certificate_data.get("surgery_date", "未提供")
+
     def __str__(self):
         applicant_name = self.get_applicant_name()
         return f"{applicant_name} - {self.clinic.name} ({self.get_status_display()})"
