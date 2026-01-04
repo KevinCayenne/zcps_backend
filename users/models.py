@@ -127,10 +127,19 @@ class User(AbstractUser):
     # 職業類別（註冊時填寫）
     occupation_category = models.CharField(
         verbose_name=_("職業類別"),
-        max_length=20,
+        max_length=50,  # 增加長度以支持更長的選項值
         choices=OccupationCategory.CHOICES,
         default=OccupationCategory.OTHER,
         help_text=_("申請人的職業類別"),
+    )
+
+    # 自定義職業類別（當 occupation_category 為 CUSTOM 時使用）
+    occupation_category_custom = models.CharField(
+        verbose_name=_("自定義職業類別"),
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=_("當選擇「其他（請填寫）」時，可在此填寫自定義職業類別"),
     )
 
     # 性別

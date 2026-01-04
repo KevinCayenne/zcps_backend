@@ -95,6 +95,7 @@ class UserSerializer(serializers.ModelSerializer):
             "preferred_2fa_method",
             "role",
             "occupation_category",
+            "occupation_category_custom",
             "information_source",
             "gender",
             "birth_date",
@@ -265,6 +266,15 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         choices=[], required=True, help_text="申請人的職業類別"  # 將在 __init__ 中設置
     )
 
+    # 自定義職業類別欄位（當選擇「其他（請填寫）」時使用）
+    occupation_category_custom = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=100,
+        help_text="當選擇「其他（請填寫）」時，可在此填寫自定義職業類別",
+    )
+
     information_source = serializers.ChoiceField(
         choices=[],  # 將在 __init__ 中設置
         required=True,
@@ -337,6 +347,7 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "last_name",
             "phone_number",
             "occupation_category",
+            "occupation_category_custom",
             "information_source",
             "gender",
             "birth_date",
@@ -374,7 +385,24 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        """驗證並提取不屬於 User 模型的欄位"""
+        """
+        驗證並提取不屬於 User 模型的欄位
+        同時驗證職業類別：如果選擇「其他（請填寫）」，則必須填寫自定義職業類別
+        """
+        from users.enums import OccupationCategory
+
+        # 驗證職業類別：如果選擇「其他（請填寫）」，則必須填寫自定義職業類別
+        occupation_category = attrs.get("occupation_category")
+        occupation_category_custom = attrs.get("occupation_category_custom", "").strip()
+
+        if occupation_category == OccupationCategory.CUSTOM:
+            if not occupation_category_custom:
+                raise serializers.ValidationError(
+                    {
+                        "occupation_category_custom": "選擇「其他（請填寫）」時，必須填寫自定義職業類別"
+                    }
+                )
+
         # 提取 clinic_id, surgery_date, surgeon_name（這些欄位不屬於 User 模型）
         self.clinic_id = attrs.pop("clinic_id", None)
         self.surgery_date = attrs.pop("surgery_date", None)
@@ -480,6 +508,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             "twofa_setup_date",
             "information_source",
             "occupation_category",
+            "occupation_category_custom",
             "gender",
             "birth_date",
             "last_2fa_verification",
@@ -528,6 +557,16 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
     occupation_category = serializers.ChoiceField(
         choices=[], required=True, help_text="申請人的職業類別"  # 將在 __init__ 中設置
     )
+
+    # 自定義職業類別欄位（當選擇「其他（請填寫）」時使用）
+    occupation_category_custom = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=100,
+        help_text="當選擇「其他（請填寫）」時，可在此填寫自定義職業類別",
+    )
+
     # 證書申請相關欄位（註冊時填寫）
     clinic_id = serializers.IntegerField(required=True, help_text="主要診所 ID")
     consultation_clinic_id = serializers.IntegerField(
@@ -587,6 +626,25 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         self.fields["information_source"].choices = InformationSource.CHOICES
         self.fields["gender"].choices = Gender.CHOICES
 
+    def validate(self, attrs):
+        """
+        驗證職業類別：如果選擇「其他（請填寫）」，則必須填寫自定義職業類別
+        """
+        from users.enums import OccupationCategory
+
+        occupation_category = attrs.get("occupation_category")
+        occupation_category_custom = attrs.get("occupation_category_custom", "").strip()
+
+        if occupation_category == OccupationCategory.CUSTOM:
+            if not occupation_category_custom:
+                raise serializers.ValidationError(
+                    {
+                        "occupation_category_custom": "選擇「其他（請填寫）」時，必須填寫自定義職業類別"
+                    }
+                )
+
+        return attrs
+
     class Meta(DjoserUserCreateSerializer.Meta):
         model = User
         fields = (
@@ -598,6 +656,7 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             "last_name",
             "phone_number",
             "occupation_category",
+            "occupation_category_custom",
             "gender",
             "birth_date",
             "privacy_policy_accepted",

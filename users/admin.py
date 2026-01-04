@@ -31,6 +31,7 @@ class UserAdmin(BaseUserAdmin):
         "is_staff",
         "is_active",
         "created_at",
+        "cert_record_group_id",
     )
 
     # Fields to filter by in the list view
@@ -98,6 +99,7 @@ class UserAdmin(BaseUserAdmin):
                     "is_superuser",
                     "groups",
                     "user_permissions",
+                    "cert_record_group_id",
                 )
             },
         ),
