@@ -414,7 +414,7 @@ class CertificateApplication(BaseModel):
         獲取申請人姓名（從用戶獲取）
         """
         if self.user:
-            return self.user.get_full_name() or self.user.username
+            return self.user.last_name + self.user.first_name or self.user.username
         return "Unknown"
 
     def get_applicant_email(self):
