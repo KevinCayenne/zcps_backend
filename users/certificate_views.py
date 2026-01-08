@@ -1086,8 +1086,8 @@ def build_certs_data_from_template(
 
         # 自動帶入會員姓名（組合 first_name 和 last_name）
         member_name = ""
-        if user.first_name or user.last_name:
-            member_name = f"{user.first_name or ''}{user.last_name or ''}".strip()
+        if user.last_name or user.first_name:
+            member_name = f"{user.last_name + user.first_name}".strip()
         elif user.username:
             member_name = user.username
         else:
