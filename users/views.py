@@ -704,6 +704,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                 "birth_date",
                 "privacy_policy_accepted",
                 "clinic_id",
+                "consultation_clinic_id",
                 "first_name",
                 "last_name",
                 "phone_number",
@@ -738,6 +739,9 @@ class CustomUserViewSet(DjoserUserViewSet):
                     "clinic_id": getattr(serializer, "clinic_id", None),
                     "surgeon_name": getattr(serializer, "surgeon_name", None),
                     "surgery_date": getattr(serializer, "surgery_date", None),
+                    "consultation_clinic_id": getattr(
+                        serializer, "consultation_clinic_id", None
+                    ),
                 }
             else:
                 # UserCreateSerializer：從 validated_data 中 pop
@@ -745,6 +749,9 @@ class CustomUserViewSet(DjoserUserViewSet):
                     "clinic_id": serializer.validated_data.pop("clinic_id", None),
                     "surgeon_name": serializer.validated_data.pop("surgeon_name", None),
                     "surgery_date": serializer.validated_data.pop("surgery_date", None),
+                    "consultation_clinic_id": serializer.validated_data.pop(
+                        "consultation_clinic_id", None
+                    ),
                 }
 
             # 使用事務確保用戶創建和證書申請創建要麼全部成功，要麼全部回滾
@@ -780,7 +787,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                         # 獲取諮詢診所（如果提供）
                         if certificate_fields.get("consultation_clinic_id"):
                             try:
-                                Clinic.objects.get(
+                                consultation_clinic = Clinic.objects.get(
                                     id=certificate_fields["consultation_clinic_id"]
                                 )
                             except Clinic.DoesNotExist:
@@ -811,6 +818,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                         application = CertificateApplication(
                             user=user,
                             clinic=clinic,
+                            consultation_clinic=consultation_clinic,
                             surgeon_name=certificate_fields["surgeon_name"],
                             surgery_date=certificate_fields["surgery_date"],
                             certificate_data=certificate_data,

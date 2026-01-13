@@ -285,6 +285,13 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         required=True, write_only=True, help_text="主要診所 ID"
     )
 
+    consultation_clinic_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+        help_text="諮詢診所 ID（可選）",
+    )
+
     username = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -353,6 +360,7 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "birth_date",
             "privacy_policy_accepted",
             "clinic_id",
+            "consultation_clinic_id",
             "surgery_date",
             "surgeon_name",
         )
@@ -384,6 +392,15 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("指定的診所不存在")
         return value
 
+    def validate_consultation_clinic_id(self, value):
+        """驗證諮詢診所是否存在"""
+        if Clinic is None:
+            return value
+
+        if value and not Clinic.objects.filter(id=value).exists():
+            raise serializers.ValidationError("諮詢診所不存在")
+        return value
+
     def validate(self, attrs):
         """
         驗證並提取不屬於 User 模型的欄位
@@ -403,8 +420,9 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
                     }
                 )
 
-        # 提取 clinic_id, surgery_date, surgeon_name（這些欄位不屬於 User 模型）
+        # 提取 clinic_id, consultation_clinic_id, surgery_date, surgeon_name（這些欄位不屬於 User 模型）
         self.clinic_id = attrs.pop("clinic_id", None)
+        self.consultation_clinic_id = attrs.pop("consultation_clinic_id", None)
         self.surgery_date = attrs.pop("surgery_date", None)
         self.surgeon_name = attrs.pop("surgeon_name", None)
 
