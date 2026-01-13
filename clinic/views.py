@@ -125,7 +125,7 @@ class ClinicViewSet(viewsets.ModelViewSet):
         """
         刪除診所資料。
 
-        如果診所有相關聯的資料（診所用戶權限、醫生、證書申請），則無法刪除。
+        如果診所有相關聯的資料（診所用戶權限、醫生、證書申請、諮詢診所證書申請），則無法刪除。
         """
         instance = self.get_object()
 
@@ -146,6 +146,15 @@ class ClinicViewSet(viewsets.ModelViewSet):
         certificate_applications_count = instance.certificate_applications.count()
         if certificate_applications_count > 0:
             related_data.append(f"證書申請 ({certificate_applications_count} 筆)")
+
+        # 檢查諮詢診所關聯的證書申請
+        consultation_certificate_applications_count = (
+            instance.consultation_certificate_applications.count()
+        )
+        if consultation_certificate_applications_count > 0:
+            related_data.append(
+                f"諮詢診所證書申請 ({consultation_certificate_applications_count} 筆)"
+            )
 
         # 如果有相關聯的資料，返回錯誤
         if related_data:
