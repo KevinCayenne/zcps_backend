@@ -72,7 +72,7 @@ class User(AbstractUser):
     # Two-Factor Authentication fields
     is_2fa_enabled = models.BooleanField(
         verbose_name=_("是否啟用兩步驟驗證"),
-        default=True,
+        default=False,
         help_text="Whether user has enabled two-factor authentication",
     )
 
