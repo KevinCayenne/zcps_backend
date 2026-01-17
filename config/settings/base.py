@@ -60,6 +60,14 @@ CERTIFICATE_TEMPLATE_ID = (
 )
 CERTIFICATE_PASSWORD = os.environ.get("CERTIFICATE_PASSWORD")
 
+SNS_RESOURCE = os.environ.get("SNS_RESOURCE", "mitake")
+MITAKE_USERNAME = os.environ.get("MITAKE_USERNAME", "")
+MITAKE_PASSWORD = os.environ.get("MITAKE_PASSWORD", "")
+MITAKE_BULK_URL = os.environ.get(
+    "MITAKE_BULK_URL", "https://smsapi.mitake.com.tw/api/mtk/SmBulkSend"
+)
+MITAKE_BULK_MAX = int(os.environ.get("MITAKE_BULK_MAX", 500))
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
