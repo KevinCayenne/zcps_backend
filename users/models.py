@@ -124,6 +124,14 @@ class User(AbstractUser):
         help_text=_("怎麼知道LBV認證活動資訊"),
     )
 
+    residence_county = models.CharField(
+        verbose_name=_("居住地縣市"),
+        max_length=20,
+        blank=True,
+        null=True,
+        help_text=_("用戶居住地縣市"),
+    )
+
     # 職業類別（註冊時填寫）
     occupation_category = models.CharField(
         verbose_name=_("職業類別"),

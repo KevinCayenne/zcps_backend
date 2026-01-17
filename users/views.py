@@ -30,6 +30,7 @@ from rest_framework import viewsets, filters
 from .serializers import UserSerializer, ClientUserSerializer
 from .filters import UserFilterSet
 from users.enums import UserRole
+from users.sns_sender.utils import send_sms
 
 # 導入診所相關模組
 try:
@@ -39,12 +40,23 @@ except ImportError:  # pragma: no cover
     Clinic = None  # type: ignore[assignment,misc]
 
 
+# @dataclass
+# class SmsData:
+#     """簡訊資料結構"""
+#     phone: str
+#     dlvTime: str = ""  # 預約發送時間，空字串表示立即發送
+#     vldTime: str = ""  # 有效期限，空字串表示使用系統預設
+#     receiverName: str = ""  # 接收者名稱
+#     response: str = ""  # 回應方式
+#     smBody: str = ""  # 簡訊內容
+
+
 class SendRegistrationOTPView(APIView):
     """
-    API endpoint to send OTP for email verification before registration.
+    API endpoint to send OTP for email or phone verification before registration.
 
     POST /auth/users/send-registration-otp/
-    This endpoint sends a 6-digit OTP to the provided email address.
+    This endpoint sends a 6-digit OTP to the provided email address or phone number.
     """
 
     permission_classes: tuple[type[BasePermission], ...] = ()  # 公開訪問，不需要認證
@@ -53,45 +65,58 @@ class SendRegistrationOTPView(APIView):
         tags=["User Management"],
         summary="Send registration OTP (Public)",
         description="""
-        發送註冊用的 OTP 驗證碼到指定的 email。
+        發送註冊用的 OTP 驗證碼到指定的 email 或手機號碼。
 
         **流程說明：**
-        1. 用戶輸入 email
+        1. 用戶輸入 email 或手機號碼
         2. 調用此 API 發送 OTP
-        3. 系統發送 6 位數驗證碼到 email
-        4. 用戶收到驗證碼後，調用驗證 API 確認 email
+        3. 系統發送 6 位數驗證碼到 email 或手機號碼
+        4. 用戶收到驗證碼後，調用驗證 API 確認
 
         **使用場景：**
-        - 註冊頁面，用戶輸入 email 後點擊「發送驗證碼」
-        - 確保 email 地址有效且用戶可以接收郵件
-        - 防止使用無效或他人的 email 註冊
+        - 註冊頁面，用戶輸入 email 或手機號碼後點擊「發送驗證碼」
+        - 確保 email 或手機號碼有效且用戶可以接收驗證碼
+        - 防止使用無效或他人的 email/手機號碼註冊
 
         **重要事項：**
         - OTP 有效期為 10 分鐘（可配置）
-        - 每個 email 最多只能有 1 個未使用的 OTP
+        - 每個 email/手機號碼最多只能有 1 個未使用的 OTP
         - 如果發送新的 OTP，舊的會被標記為已使用
         - 驗證失敗超過 5 次需重新發送
+        - 必須提供 email 或 phone_number 其中一個（不能同時為空）
 
         **安全考量：**
-        - 即使 email 不存在，也返回成功（防止 email 枚舉攻擊）
+        - 即使 email/手機號碼不存在，也返回成功（防止枚舉攻擊）
         - 有發送頻率限制（建議前端實現防抖）
         """,
         request=inline_serializer(
             name="SendRegistrationOTPRequest",
             fields={
-                "email": serializers.EmailField(help_text="要驗證的 email 地址"),
+                "email": serializers.EmailField(
+                    help_text="要驗證的 email 地址（與 phone_number 二選一）",
+                    required=False,
+                ),
+                "phone_number": serializers.CharField(
+                    help_text="要驗證的手機號碼（與 email 二選一）",
+                    required=False,
+                ),
             },
         ),
         examples=[
             OpenApiExample(
-                "Send OTP Request",
+                "Send OTP via Email",
                 value={"email": "user@example.com"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Send OTP via SMS",
+                value={"phone_number": "+886912345678"},
                 request_only=True,
             ),
         ],
         responses={
             200: OpenApiResponse(
-                description="OTP 已發送（即使 email 不存在也返回成功，防止枚舉攻擊）",
+                description="OTP 已發送（即使 email/手機號碼不存在也返回成功，防止枚舉攻擊）",
                 response=inline_serializer(
                     name="SendRegistrationOTPSuccessResponse",
                     fields={
@@ -99,11 +124,14 @@ class SendRegistrationOTPView(APIView):
                         "expires_at": serializers.DateTimeField(
                             help_text="OTP 過期時間"
                         ),
+                        "method": serializers.CharField(
+                            help_text="發送方式：EMAIL 或 SMS"
+                        ),
                     },
                 ),
             ),
             400: OpenApiResponse(
-                description="Bad Request - email 格式無效",
+                description="Bad Request - 參數錯誤或格式無效",
                 response=inline_serializer(
                     name="SendRegistrationOTPErrorResponse",
                     fields={
@@ -124,77 +152,92 @@ class SendRegistrationOTPView(APIView):
     )
     def post(self, request):
         """
-        發送註冊用的 OTP 驗證碼
+        發送註冊用的 OTP 驗證碼到 email 或手機號碼
         """
         email = request.data.get("email", "").strip()
+        phone_number = request.data.get("phone_number", "").strip()
 
-        if not email:
+        # 必須提供 email 或 phone_number 其中一個
+        if not email and not phone_number:
             return Response(
-                {"error": "email 參數是必填的"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "必須提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 驗證 email 格式
-        from django.core.validators import validate_email
-        from django.core.exceptions import ValidationError
-
-        try:
-            validate_email(email)
-        except ValidationError:
+        # 不能同時提供兩個參數
+        if email and phone_number:
             return Response(
-                {"error": "email 格式無效"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "只能提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 檢查 email 是否已被使用（如果已註冊，不需要發送 OTP）
-        if User.objects.filter(email__iexact=email).exists():
-            # 即使 email 已被使用，也返回成功（防止枚舉攻擊）
-            # 但在驗證 OTP 時會檢查
-            return Response(
-                {
-                    "message": "如果此 email 尚未註冊，驗證碼已發送到您的 email",
-                    "expires_at": None,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        # 檢查發送頻率（防止濫用）
         from django.utils import timezone
         from datetime import timedelta
+        import secrets
+        import logging
+        import re
 
-        recent_otp = EmailVerificationOTP.objects.filter(
-            email__iexact=email, created_at__gte=timezone.now() - timedelta(minutes=1)
-        ).first()
-
-        if recent_otp:
-            return Response(
-                {"error": "請稍候再試，發送頻率過高"},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
+        logger = logging.getLogger(__name__)
 
         # 生成 6 位數驗證碼
-        import secrets
-
         code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
 
         # 設置過期時間（10 分鐘）
         expires_at = timezone.now() + timedelta(minutes=10)
 
-        # 將舊的未使用 OTP 標記為已使用
-        EmailVerificationOTP.objects.filter(email__iexact=email, is_used=False).update(
-            is_used=True
-        )
+        # 處理 EMAIL 發送
+        if email:
+            # 驗證 email 格式
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
 
-        # 創建新的 OTP
-        EmailVerificationOTP.objects.create(
-            email=email, code=code, expires_at=expires_at
-        )
+            try:
+                validate_email(email)
+            except ValidationError:
+                return Response(
+                    {"error": "email 格式無效"}, status=status.HTTP_400_BAD_REQUEST
+                )
 
-        # 發送 OTP 到 email
-        try:
-            from django.core.mail import EmailMultiAlternatives
-            from django.conf import settings
+            # 檢查 email 是否已被使用
+            if User.objects.filter(email__iexact=email).exists():
+                return Response(
+                    {
+                        "message": "如果此 email 尚未註冊，驗證碼已發送到您的 email",
+                        "expires_at": None,
+                        "method": "EMAIL",
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
-            subject = "您的註冊驗證碼"
-            message = f"""親愛的用戶，
+            # 檢查發送頻率
+            recent_otp = EmailVerificationOTP.objects.filter(
+                email__iexact=email,
+                created_at__gte=timezone.now() - timedelta(minutes=1),
+            ).first()
+
+            if recent_otp:
+                return Response(
+                    {"error": "請稍候再試，發送頻率過高"},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+            # 將舊的未使用 OTP 標記為已使用
+            EmailVerificationOTP.objects.filter(
+                email__iexact=email, is_used=False
+            ).update(is_used=True)
+
+            # 創建新的 OTP
+            EmailVerificationOTP.objects.create(
+                email=email, code=code, expires_at=expires_at
+            )
+
+            # 發送 OTP 到 email
+            try:
+                from django.core.mail import EmailMultiAlternatives
+                from django.conf import settings
+
+                subject = "您的註冊驗證碼"
+                message = f"""親愛的用戶，
 
 您的註冊驗證碼是：
 
@@ -207,25 +250,116 @@ class SendRegistrationOTPView(APIView):
 謝謝！
 """
 
-            # 使用 EmailMultiAlternatives 以支持 BCC
-            email_msg = EmailMultiAlternatives(
-                subject=subject,
-                body=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[email],
+                email_msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[email],
+                )
+                email_msg.send(fail_silently=False)
+                logger.info(f"OTP email sent successfully to {email}")
+            except Exception as e:
+                logger.error(f"Failed to send OTP email to {email}: {e}")
+                # 即使發送失敗，也返回成功（防止枚舉攻擊）
+
+            return Response(
+                {
+                    "message": "驗證碼已發送到您的 email",
+                    "expires_at": expires_at,
+                    "method": "EMAIL",
+                },
+                status=status.HTTP_200_OK,
             )
-            email_msg.send(fail_silently=False)
-        except Exception as e:
-            import logging
 
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to send OTP email to {email}: {e}")
-            # 即使發送失敗，也返回成功（防止枚舉攻擊）
+        # 處理 SMS 發送
+        else:
+            # 基本手機號碼格式驗證
+            # 移除空格和特殊字符，只保留數字和 + 號
+            cleaned_phone = re.sub(r"[^\d+]", "", phone_number)
+            if not cleaned_phone or len(cleaned_phone) < 8:
+                return Response(
+                    {"error": "手機號碼格式無效"}, status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response(
-            {"message": "驗證碼已發送到您的 email", "expires_at": expires_at},
-            status=status.HTTP_200_OK,
-        )
+            # 檢查手機號碼是否已被使用
+            if User.objects.filter(phone_number=cleaned_phone).exists():
+                return Response(
+                    {
+                        "message": "如果此手機號碼尚未註冊，驗證碼已發送到您的手機",
+                        "expires_at": None,
+                        "method": "SMS",
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # 檢查發送頻率
+            recent_otp = EmailVerificationOTP.objects.filter(
+                email=cleaned_phone,
+                created_at__gte=timezone.now() - timedelta(minutes=1),
+            ).first()
+
+            if recent_otp:
+                return Response(
+                    {"error": "請稍候再試，發送頻率過高"},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+            # 將舊的未使用 OTP 標記為已使用
+            # 注意：這裡使用 email 欄位來存儲手機號碼（因為模型只有 email 欄位）
+            EmailVerificationOTP.objects.filter(
+                email=cleaned_phone, is_used=False
+            ).update(is_used=True)
+
+            # 創建新的 OTP（使用 email 欄位存儲手機號碼）
+            otp_instance = EmailVerificationOTP.objects.create(
+                email=cleaned_phone, code=code, expires_at=expires_at
+            )
+
+            # 發送 OTP 到手機號碼
+            try:
+                # 構建簡訊內容
+                sms_content = f"您的註冊驗證碼是：{code}，此驗證碼將在 10 分鐘後過期。如果您沒有申請註冊，請忽略此簡訊。"
+
+                # 發送簡訊
+                result = send_sms(cleaned_phone, sms_content)
+
+                # 檢查發送結果
+                if result.get("status") == "error":
+                    error_message = result.get("message", "簡訊發送失敗")
+                    logger.error(
+                        f"Failed to send OTP SMS to {cleaned_phone}: {error_message}"
+                    )
+                    # 發送失敗，刪除已創建的 OTP
+                    otp_instance.delete()
+                    return Response(
+                        {
+                            "error": error_message,
+                        },
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+                else:
+                    logger.info(f"OTP SMS sent successfully to {cleaned_phone}")
+
+            except Exception as e:
+                error_message = f"簡訊發送失敗: {str(e)}"
+                logger.error(f"Failed to send OTP SMS to {cleaned_phone}: {e}")
+                # 發送失敗，刪除已創建的 OTP
+                otp_instance.delete()
+                return Response(
+                    {
+                        "error": error_message,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {
+                    "message": "驗證碼已發送到您的手機",
+                    "expires_at": expires_at,
+                    "method": "SMS",
+                },
+                status=status.HTTP_200_OK,
+            )
 
 
 class VerifyRegistrationOTPView(APIView):
@@ -702,6 +836,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                 "information_source",
                 "gender",
                 "birth_date",
+                "residence_county",
                 "privacy_policy_accepted",
                 "clinic_id",
                 "consultation_clinic_id",
@@ -710,6 +845,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                 "phone_number",
                 "surgery_date",
                 "surgeon_name",
+                "consultant_name",
             }
             has_only_simple_fields = set(request_data.keys()).issubset(simple_fields)
 
@@ -742,6 +878,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                     "consultation_clinic_id": getattr(
                         serializer, "consultation_clinic_id", None
                     ),
+                    "consultant_name": getattr(serializer, "consultant_name", None),
                 }
             else:
                 # UserCreateSerializer：從 validated_data 中 pop
@@ -751,6 +888,9 @@ class CustomUserViewSet(DjoserUserViewSet):
                     "surgery_date": serializer.validated_data.pop("surgery_date", None),
                     "consultation_clinic_id": serializer.validated_data.pop(
                         "consultation_clinic_id", None
+                    ),
+                    "consultant_name": serializer.validated_data.pop(
+                        "consultant_name", None
                     ),
                 }
 
@@ -785,6 +925,7 @@ class CustomUserViewSet(DjoserUserViewSet):
                             )
 
                         # 獲取諮詢診所（如果提供）
+                        consultation_clinic = None
                         if certificate_fields.get("consultation_clinic_id"):
                             try:
                                 consultation_clinic = Clinic.objects.get(
@@ -821,6 +962,9 @@ class CustomUserViewSet(DjoserUserViewSet):
                             consultation_clinic=consultation_clinic,
                             surgeon_name=certificate_fields["surgeon_name"],
                             surgery_date=certificate_fields["surgery_date"],
+                            consultant_name=certificate_fields.get(
+                                "consultant_name", ""
+                            ),
                             certificate_data=certificate_data,
                             create_user=user,
                         )

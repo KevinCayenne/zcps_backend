@@ -114,7 +114,7 @@ def _send_2fa_code_via_email(user, code, verification_type="TWO_FACTOR"):
     expiration_seconds = settings.TWOFACTOR_CODE_EXPIRATION_SECONDS
     expiration_minutes = expiration_seconds // 60
 
-    message = f"""您好 {user.first_name or user.username}，
+    message = f"""您好 {user.last_name or user.username}，
 
 {intro_text}
 

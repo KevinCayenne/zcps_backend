@@ -75,12 +75,14 @@ class InformationSource:
     FRIENDS_FAMILY = "friends_family"
     SOCIAL_MEDIA = "social_media"
     INTERNET_SEARCH = "internet_search"
+    FAMOUS = "famous"
     OTHER = "other"
 
     CHOICES = [
         (FRIENDS_FAMILY, _("親友推薦")),
         (SOCIAL_MEDIA, _("社群媒體")),
         (INTERNET_SEARCH, _("網路搜尋")),
+        (FAMOUS, _("名人推薦")),
         (OTHER, _("其他")),
     ]
 
