@@ -54,6 +54,13 @@ class UserSerializer(serializers.ModelSerializer):
         help_text="診所 ID 列表（寫入時用於設置該用戶的診所權限）",
     )
 
+    residence_county = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="用戶居住地縣市",
+    )
+
     # 性別欄位
     gender = serializers.ChoiceField(
         choices=Gender.CHOICES,
@@ -97,6 +104,7 @@ class UserSerializer(serializers.ModelSerializer):
             "occupation_category",
             "occupation_category_custom",
             "information_source",
+            "residence_county",
             "gender",
             "birth_date",
             "privacy_policy_accepted",
@@ -256,7 +264,9 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
 
     """
 
-    first_name = serializers.CharField(required=True, help_text="名稱")
+    first_name = serializers.CharField(
+        required=True, help_text="名稱", allow_blank=True, allow_null=True
+    )
 
     last_name = serializers.CharField(required=True, help_text="姓氏")
 
@@ -312,6 +322,14 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         required=True, write_only=True, help_text="手術醫師姓名"
     )
 
+    consultant_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        write_only=True,
+        help_text="諮詢師姓名（可選）",
+    )
+
     # 性別欄位
     gender = serializers.ChoiceField(
         choices=[],  # 將在 __init__ 中設置
@@ -356,6 +374,7 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "occupation_category",
             "occupation_category_custom",
             "information_source",
+            "residence_county",
             "gender",
             "birth_date",
             "privacy_policy_accepted",
@@ -363,6 +382,7 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "consultation_clinic_id",
             "surgery_date",
             "surgeon_name",
+            "consultant_name",
         )
         read_only_fields = ("id",)
         extra_kwargs = {
@@ -374,6 +394,7 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
             "occupation_category": {"required": True},
             "information_source": {"required": True},
             "gender": {"required": False},
+            "residence_county": {"required": False},
             "birth_date": {"required": False},
             "privacy_policy_accepted": {"required": False},
             "clinic_id": {"required": True},
@@ -420,11 +441,12 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
                     }
                 )
 
-        # 提取 clinic_id, consultation_clinic_id, surgery_date, surgeon_name（這些欄位不屬於 User 模型）
+        # 提取 clinic_id, consultation_clinic_id, surgery_date, surgeon_name, consultant_name（這些欄位不屬於 User 模型）
         self.clinic_id = attrs.pop("clinic_id", None)
         self.consultation_clinic_id = attrs.pop("consultation_clinic_id", None)
         self.surgery_date = attrs.pop("surgery_date", None)
         self.surgeon_name = attrs.pop("surgeon_name", None)
+        self.consultant_name = attrs.pop("consultant_name", None)
 
         # 手動驗證 email 和 password
         email = attrs.get("email")
@@ -527,6 +549,7 @@ class ClientUserSerializer(serializers.ModelSerializer):
             "information_source",
             "occupation_category",
             "occupation_category_custom",
+            "residence_county",
             "gender",
             "birth_date",
             "last_2fa_verification",
@@ -675,6 +698,7 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
             "phone_number",
             "occupation_category",
             "occupation_category_custom",
+            "residence_county",
             "gender",
             "birth_date",
             "privacy_policy_accepted",
