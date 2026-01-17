@@ -27,6 +27,7 @@ from .models import User, EmailVerificationOTP
 from .permissions import IsAdminRolePermission
 from config.paginator import StandardResultsSetPagination
 from rest_framework import viewsets, filters
+from rest_framework.decorators import action
 from .serializers import UserSerializer, ClientUserSerializer
 from .filters import UserFilterSet
 from users.enums import UserRole
@@ -2257,6 +2258,182 @@ class ClientUserViewSet(viewsets.ModelViewSet):
         """
         return Response(
             {"detail": "無法刪除用戶資料。"}, status=status.HTTP_403_FORBIDDEN
+        )
+
+    @extend_schema(
+        tags=["User Management"],
+        summary="Get client user statistics (Authenticated - Admin)",
+        description="""
+        取得客戶用戶的統計資料，包含五個統計指標：
+        1. 性別跟年齡（人口金字塔格式）
+        2. 地區
+        3. 資訊來源
+        4. 職業類別
+        5. 手術診所
+
+        回傳五個圖表資料，x軸是各類別統計指標，y軸是user人數。
+        """,
+        responses={
+            200: OpenApiResponse(
+                description="統計資料取得成功",
+                response=inline_serializer(
+                    name="ClientUserStatisticsResponse",
+                    fields={
+                        "gender_age": serializers.DictField(
+                            help_text="性別年齡統計（人口金字塔格式）"
+                        ),
+                        "region": serializers.DictField(help_text="地區統計"),
+                        "information_source": serializers.DictField(
+                            help_text="資訊來源統計"
+                        ),
+                        "occupation_category": serializers.DictField(
+                            help_text="職業類別統計"
+                        ),
+                        "surgery_clinic": serializers.DictField(
+                            help_text="手術診所統計"
+                        ),
+                    },
+                ),
+            ),
+            401: OpenApiResponse(
+                description="Unauthorized - Missing or invalid access token"
+            ),
+            403: OpenApiResponse(description="Forbidden - Insufficient permissions"),
+        },
+    )
+    @action(detail=False, methods=["get"])
+    def statistics(self, request):
+        """
+        取得客戶用戶統計資料
+        """
+        from django.db.models import Count
+        from datetime import date
+        from collections import defaultdict
+        from users.enums import Gender, InformationSource, OccupationCategory
+
+        # 取得所有客戶用戶
+        users = self.queryset
+
+        # 1. 性別跟年齡統計（人口金字塔格式）
+        gender_age_data = defaultdict(lambda: {"male": 0, "female": 0, "other": 0})
+
+        # 定義年齡區間（每10歲一組）
+        age_groups = [(i, i + 9) for i in range(0, 100, 10)]
+
+        for user in users:
+            if user.birth_date:
+                # 計算年齡
+                today = date.today()
+                age = (
+                    today.year
+                    - user.birth_date.year
+                    - (
+                        (today.month, today.day)
+                        < (user.birth_date.month, user.birth_date.day)
+                    )
+                )
+
+                # 找到對應的年齡區間
+                age_group = None
+                for min_age, max_age in age_groups:
+                    if min_age <= age <= max_age:
+                        age_group = f"{min_age}-{max_age}"
+                        break
+
+                if age_group:
+                    # 根據性別分類
+                    if user.gender == Gender.MALE:
+                        gender_age_data[age_group]["male"] += 1
+                    elif user.gender == Gender.FEMALE:
+                        gender_age_data[age_group]["female"] += 1
+                    elif user.gender:
+                        gender_age_data[age_group]["other"] += 1
+
+        # 轉換為人口金字塔格式（從高齡到低齡排序，符合人口金字塔顯示）
+        gender_age_result = []
+        for min_age in range(90, -1, -10):  # 從 90 到 0，每次減 10
+            max_age = min(min_age + 9, 99)  # 確保不超過 99
+            age_group = f"{min_age}-{max_age}"
+            gender_age_result.append(
+                {
+                    "age_group": age_group,
+                    "male": gender_age_data[age_group]["male"],
+                    "female": gender_age_data[age_group]["female"],
+                    "other": gender_age_data[age_group]["other"],
+                }
+            )
+
+        # 2. 地區統計
+        region_data = (
+            users.filter(residence_county__isnull=False)
+            .exclude(residence_county="")
+            .values("residence_county")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+        region_result = {
+            item["residence_county"]: item["count"] for item in region_data
+        }
+
+        # 3. 資訊來源統計
+        information_source_data = (
+            users.values("information_source")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+        information_source_result = {}
+        for item in information_source_data:
+            # 將枚舉值轉換為顯示名稱
+            source_value = item["information_source"]
+            source_label = dict(InformationSource.CHOICES).get(
+                source_value, source_value
+            )
+            # 將 __proxy__ 對象轉換為字符串（Django gettext_lazy）
+            information_source_result[str(source_label)] = item["count"]
+
+        # 4. 職業類別統計
+        occupation_category_data = (
+            users.values("occupation_category")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+        occupation_category_result = {}
+        for item in occupation_category_data:
+            # 將枚舉值轉換為顯示名稱
+            category_value = item["occupation_category"]
+            category_label = dict(OccupationCategory.CHOICES).get(
+                category_value, category_value
+            )
+            # 將 __proxy__ 對象轉換為字符串（Django gettext_lazy）
+            occupation_category_result[str(category_label)] = item["count"]
+
+        # 5. 手術診所統計
+        surgery_clinic_result = {}
+        try:
+            from clinic.models import CertificateApplication
+
+            clinic_data = (
+                CertificateApplication.objects.filter(user__role=UserRole.CLIENT)
+                .values("clinic__name")
+                .annotate(count=Count("id"))
+                .order_by("-count")
+            )
+            surgery_clinic_result = {
+                item["clinic__name"] or "未指定": item["count"] for item in clinic_data
+            }
+        except Exception:
+            # 如果無法查詢診所資料，返回空字典
+            surgery_clinic_result = {}
+
+        return Response(
+            {
+                "gender_age": gender_age_result,
+                "region": region_result,
+                "information_source": information_source_result,
+                "occupation_category": occupation_category_result,
+                "surgery_clinic": surgery_clinic_result,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
