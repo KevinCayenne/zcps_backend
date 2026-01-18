@@ -1,0 +1,19 @@
+name: Scheduled Tasks
+
+on:
+  schedule:
+    # Run every 5 minutes
+    - cron: "*/5 * * * *"
+
+jobs:
+  scheduler-notification-task:
+    runs-on: ubuntu-latest
+    # Run every 5 minutes (minimum interval for GitHub Actions)
+    if: github.event.schedule == '*/5 * * * *'
+
+    steps:
+      - name: Scheduler Notification Task
+        run: |
+          curl -X POST https://lpxyvefkjs3mcjtcn4sngbmfye0uojem.lambda-url.ap-east-1.on.aws/api/scheduler/execute_tasks/ \
+          -H "Content-Type: application/json" \
+          -H "X-Custom-Token: lzLc2cLXu2rRQgp4s2mh1IACELGIYe3vXuCz3W52rVKMlt26a660UBGHlctdfF6D"

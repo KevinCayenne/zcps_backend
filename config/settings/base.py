@@ -30,6 +30,7 @@ else:
 SECRET_KEY = os.environ.get(
     "SECRET_KEY", "django-insecure-pdx_)j9t%_135!=8w@t8)gur2sd$+4_3mezx8%0se)wmcn)8zr"
 )
+CUSTOM_TOKEN = "lzLc2cLXu2rRQgp4s2mh1IACELGIYe3vXuCz3W52rVKMlt26a660UBGHlctdfF6D"
 
 # Database URL
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
@@ -108,6 +109,7 @@ INSTALLED_APPS = [
     "clinic",
     "logs",
     "announcement",
+    "scheduler",
 ]
 
 MIDDLEWARE = [
