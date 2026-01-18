@@ -43,6 +43,7 @@ from users.jwt_views import (
     CustomTokenRefreshView,
     CustomTokenVerifyView,
 )
+from scheduler.views import TaskViewSet, ExecutorView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -72,6 +73,8 @@ router.register(r"announcements", AnnouncementViewSet, basename="announcements")
 router.register(
     r"client-announcements", ClientAnnouncementViewSet, basename="client-announcements"
 )
+router.register(r"scheduler/tasks", TaskViewSet, basename="scheduler_tasks")
+
 
 urlpatterns = [
     path("api/", include(router.urls)),
@@ -156,6 +159,11 @@ urlpatterns = [
         "api/certificates/revoke-certificate/",
         RevokeCertificateView.as_view(),
         name="revoke_certificate",
+    ),
+    path(
+        "api/scheduler/execute_tasks/",
+        ExecutorView.as_view(),
+        name="scheduler-execute-tasks",
     ),
 ]
 
