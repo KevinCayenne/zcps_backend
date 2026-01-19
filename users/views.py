@@ -203,7 +203,7 @@ class SendRegistrationOTPView(APIView):
             if User.objects.filter(email__iexact=email).exists():
                 return Response(
                     {
-                        "message": "如果此 email 尚未註冊，驗證碼已發送到您的 email",
+                        "message": "此 email 已被使用，請使用其他 email 註冊",
                         "expires_at": None,
                         "method": "EMAIL",
                     },
@@ -218,7 +218,7 @@ class SendRegistrationOTPView(APIView):
 
             if recent_otp:
                 return Response(
-                    {"error": "請稍候再試，發送頻率過高"},
+                    {"error": "請稍候再試，發送頻率過高，請稍候再試"},
                     status=status.HTTP_429_TOO_MANY_REQUESTS,
                 )
 
