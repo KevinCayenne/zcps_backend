@@ -238,7 +238,7 @@ class SendRegistrationOTPView(APIView):
                 from django.conf import settings
 
                 subject = "您的註冊驗證碼"
-                message = f"""親愛的用戶，
+                message = f"""親愛的LBV用戶，
 
 您的註冊驗證碼是：
 
@@ -286,7 +286,7 @@ class SendRegistrationOTPView(APIView):
             if User.objects.filter(phone_number=cleaned_phone).exists():
                 return Response(
                     {
-                        "message": "如果此手機號碼尚未註冊，驗證碼已發送到您的手機",
+                        "message": "此手機號碼已被使用，請使用其他手機號碼註冊",
                         "expires_at": None,
                         "method": "SMS",
                     },
@@ -301,7 +301,7 @@ class SendRegistrationOTPView(APIView):
 
             if recent_otp:
                 return Response(
-                    {"error": "請稍候再試，發送頻率過高"},
+                    {"error": "請稍候再試，發送頻率過高，請稍候再試"},
                     status=status.HTTP_429_TOO_MANY_REQUESTS,
                 )
 
@@ -365,10 +365,10 @@ class SendRegistrationOTPView(APIView):
 
 class VerifyRegistrationOTPView(APIView):
     """
-    API endpoint to verify OTP for email verification before registration.
+    API endpoint to verify OTP for email or phone number verification before registration.
 
     POST /auth/users/verify-registration-otp/
-    This endpoint verifies the OTP code sent to the email.
+    This endpoint verifies the OTP code sent to the email or phone number.
     """
 
     permission_classes: tuple[type[BasePermission], ...] = ()  # 公開訪問，不需要認證
@@ -377,7 +377,7 @@ class VerifyRegistrationOTPView(APIView):
         tags=["User Management"],
         summary="Verify registration OTP (Public)",
         description="""
-        驗證註冊用的 OTP 驗證碼。
+        驗證註冊用的 OTP 驗證碼（支援 email 或手機號碼）。
 
         **流程說明：**
         1. 用戶收到 OTP 驗證碼
@@ -389,7 +389,8 @@ class VerifyRegistrationOTPView(APIView):
         - OTP 必須在 10 分鐘內使用
         - OTP 只能使用一次
         - 驗證失敗超過 5 次需重新發送
-        - email 必須尚未註冊
+        - email 或手機號碼必須尚未註冊
+        - 必須提供 email 或 phone_number 其中一個（不能同時為空）
 
         **返回結果：**
         - `verified`: true 表示驗證成功
@@ -403,14 +404,26 @@ class VerifyRegistrationOTPView(APIView):
         request=inline_serializer(
             name="VerifyRegistrationOTPRequest",
             fields={
-                "email": serializers.EmailField(help_text="要驗證的 email 地址"),
+                "email": serializers.EmailField(
+                    help_text="要驗證的 email 地址（與 phone_number 二選一）",
+                    required=False,
+                ),
+                "phone_number": serializers.CharField(
+                    help_text="要驗證的手機號碼（與 email 二選一）",
+                    required=False,
+                ),
                 "code": serializers.CharField(help_text="6 位數驗證碼"),
             },
         ),
         examples=[
             OpenApiExample(
-                "Verify OTP Request",
+                "Verify OTP via Email",
                 value={"email": "user@example.com", "code": "123456"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Verify OTP via SMS",
+                value={"phone_number": "+886912345678", "code": "123456"},
                 request_only=True,
             ),
         ],
@@ -441,96 +454,191 @@ class VerifyRegistrationOTPView(APIView):
     )
     def post(self, request):
         """
-        驗證註冊用的 OTP 驗證碼
+        驗證註冊用的 OTP 驗證碼（支援 email 或手機號碼）
         """
         email = request.data.get("email", "").strip()
+        phone_number = request.data.get("phone_number", "").strip()
         code = request.data.get("code", "").strip()
 
-        if not email or not code:
+        # 必須提供 email 或 phone_number 其中一個
+        if not email and not phone_number:
             return Response(
-                {"error": "email 和 code 參數都是必填的"},
+                {"error": "必須提供 email 或 phone_number 其中一個參數"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 驗證 email 格式
+        # 不能同時提供兩個參數
+        if email and phone_number:
+            return Response(
+                {"error": "只能提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not code:
+            return Response(
+                {"error": "code 參數是必填的"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        import re
         from django.core.validators import validate_email
         from django.core.exceptions import ValidationError
 
-        try:
-            validate_email(email)
-        except ValidationError:
-            return Response(
-                {"error": "email 格式無效"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 檢查 email 是否已被註冊
-        if User.objects.filter(email__iexact=email).exists():
-            return Response(
-                {"verified": False, "error": "此 email 已被註冊"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # 查找最新的未使用 OTP
-        otp = (
-            EmailVerificationOTP.objects.filter(email__iexact=email, is_used=False)
-            .order_by("-created_at")
-            .first()
-        )
-
-        if not otp:
-            return Response(
-                {"verified": False, "error": "未找到有效的驗證碼，請重新發送"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # 檢查 OTP 是否有效
-        if not otp.is_valid():
-            if otp.failed_attempts >= 5:
+        # 處理 EMAIL 驗證
+        if email:
+            # 驗證 email 格式
+            try:
+                validate_email(email)
+            except ValidationError:
                 return Response(
-                    {"verified": False, "error": "驗證失敗次數過多，請重新發送驗證碼"},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    {"error": "email 格式無效"}, status=status.HTTP_400_BAD_REQUEST
                 )
-            else:
+
+            # 檢查 email 是否已被註冊
+            if User.objects.filter(email__iexact=email).exists():
                 return Response(
-                    {"verified": False, "error": "驗證碼已過期，請重新發送"},
+                    {"verified": False, "error": "此 email 已被註冊"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # 驗證 code 是否正確
-        if otp.code != code:
-            # 增加失敗次數
-            otp.failed_attempts += 1
-            otp.save(update_fields=["failed_attempts"])
+            # 查找最新的未使用 OTP
+            otp = (
+                EmailVerificationOTP.objects.filter(email__iexact=email, is_used=False)
+                .order_by("-created_at")
+                .first()
+            )
+
+            if not otp:
+                return Response(
+                    {"verified": False, "error": "未找到有效的驗證碼，請重新發送"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 檢查 OTP 是否有效
+            if not otp.is_valid():
+                if otp.failed_attempts >= 5:
+                    return Response(
+                        {
+                            "verified": False,
+                            "error": "驗證失敗次數過多，請重新發送驗證碼",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                else:
+                    return Response(
+                        {"verified": False, "error": "驗證碼已過期，請重新發送"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            # 驗證 code 是否正確
+            if otp.code != code:
+                # 增加失敗次數
+                otp.failed_attempts += 1
+                otp.save(update_fields=["failed_attempts"])
+
+                return Response(
+                    {
+                        "verified": False,
+                        "error": f"驗證碼錯誤，還剩 {5 - otp.failed_attempts} 次機會",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 驗證成功，標記為已使用
+            otp.is_used = True
+            otp.save(update_fields=["is_used"])
+
+            # 生成臨時驗證 token（可選，用於後續註冊時驗證）
+            import secrets
+
+            verification_token = secrets.token_urlsafe(32)
 
             return Response(
                 {
-                    "verified": False,
-                    "error": f"驗證碼錯誤，還剩 {5 - otp.failed_attempts} 次機會",
+                    "verified": True,
+                    "message": "Email 驗證成功",
+                    "token": verification_token,  # 可選，用於後續註冊驗證
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_200_OK,
             )
 
-        # 驗證成功，標記為已使用
-        otp.is_used = True
-        otp.save(update_fields=["is_used"])
+        # 處理手機號碼驗證
+        else:
+            # 基本手機號碼格式驗證
+            # 移除空格和特殊字符，只保留數字和 + 號
+            cleaned_phone = re.sub(r"[^\d+]", "", phone_number)
+            if not cleaned_phone or len(cleaned_phone) < 8:
+                return Response(
+                    {"error": "手機號碼格式無效"}, status=status.HTTP_400_BAD_REQUEST
+                )
 
-        # 生成臨時驗證 token（可選，用於後續註冊時驗證）
-        # 這裡可以使用 JWT 或其他方式生成 token
-        import secrets
+            # 檢查手機號碼是否已被註冊
+            if User.objects.filter(phone_number=cleaned_phone).exists():
+                return Response(
+                    {"verified": False, "error": "此手機號碼已被註冊"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        verification_token = secrets.token_urlsafe(32)
+            # 查找最新的未使用 OTP（使用 email 欄位存儲手機號碼）
+            otp = (
+                EmailVerificationOTP.objects.filter(email=cleaned_phone, is_used=False)
+                .order_by("-created_at")
+                .first()
+            )
 
-        # 可以將 token 存儲在 session 或 cache 中
-        # 這裡簡化處理，直接返回成功
+            if not otp:
+                return Response(
+                    {"verified": False, "error": "未找到有效的驗證碼，請重新發送"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        return Response(
-            {
-                "verified": True,
-                "message": "Email 驗證成功",
-                "token": verification_token,  # 可選，用於後續註冊驗證
-            },
-            status=status.HTTP_200_OK,
-        )
+            # 檢查 OTP 是否有效
+            if not otp.is_valid():
+                if otp.failed_attempts >= 5:
+                    return Response(
+                        {
+                            "verified": False,
+                            "error": "驗證失敗次數過多，請重新發送驗證碼",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                else:
+                    return Response(
+                        {"verified": False, "error": "驗證碼已過期，請重新發送"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            # 驗證 code 是否正確
+            if otp.code != code:
+                # 增加失敗次數
+                otp.failed_attempts += 1
+                otp.save(update_fields=["failed_attempts"])
+
+                return Response(
+                    {
+                        "verified": False,
+                        "error": f"驗證碼錯誤，還剩 {5 - otp.failed_attempts} 次機會",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 驗證成功，標記為已使用
+            otp.is_used = True
+            otp.save(update_fields=["is_used"])
+
+            # 生成臨時驗證 token（可選，用於後續註冊時驗證）
+            import secrets
+
+            verification_token = secrets.token_urlsafe(32)
+
+            return Response(
+                {
+                    "verified": True,
+                    "message": "手機號碼驗證成功",
+                    "token": verification_token,  # 可選，用於後續註冊驗證
+                },
+                status=status.HTTP_200_OK,
+            )
 
 
 class VerifyEmailView(APIView):

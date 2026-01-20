@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework.permissions import BasePermission
 from users.enums import UserRole
 
@@ -26,3 +27,9 @@ class IsAdminRolePermission(BasePermission):
             UserRole.SUPER_ADMIN,
             UserRole.ADMIN,
         ]
+
+
+class CustomTokenPermission(BasePermission):
+    def has_permission(self, request, view):
+        token = request.headers.get("X-Custom-Token")
+        return token == settings.CUSTOM_TOKEN
