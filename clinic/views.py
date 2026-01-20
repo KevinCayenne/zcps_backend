@@ -2385,7 +2385,7 @@ class IssueCertificateView(APIView):
 
         # 步驟 7: 發送證書發放通知 (先實作Email通知)
         try:
-            send_certificate_issue_notification_email(application)
+            send_certificate_issue_notification_email(application, certificate_hash)
         except Exception as e:
             logger.error(
                 f"Failed to send certificate issue notification email for application {application.id}: {e}",
@@ -2406,7 +2406,7 @@ class IssueCertificateView(APIView):
         )
 
 
-def send_certificate_issue_notification_email(application):
+def send_certificate_issue_notification_email(application, certificate_hash):
     """
     發送證書發放通知 email 給申請人
 
@@ -2447,6 +2447,59 @@ def send_certificate_issue_notification_email(application):
     if application.certificate_group_id:
         frontend_url = getattr(settings, "CLIENT_FRONTEND_URL", "http://localhost:3001")
         certificate_url = f"{frontend_url}"
+
+    # 嘗試獲取 PDF 下載連結
+    pdf_download_url = None
+    pdf_download_section = ""
+    if certificate_hash:
+        try:
+            # 通過 hash 獲取證書資料
+            response_data, status_code = get_certificate(
+                cert_id=None, cert_hash=certificate_hash
+            )
+
+            # 檢查是否成功獲取證書資料
+            if status_code == status.HTTP_200_OK and isinstance(response_data, dict):
+                content = response_data.get("content", {})
+                # 嘗試從不同可能的欄位名稱獲取 PDF ID
+                pdf_id = (
+                    content.get("pdfld")
+                    or content.get("pdfId")
+                    or content.get("pdf_id")
+                    or content.get("pdfFileId")
+                )
+
+                if pdf_id:
+                    # 獲取 PDF URL
+                    pdf_url, pdf_status_code = get_pdf_url(pdf_id=str(pdf_id))
+                    if pdf_status_code == status.HTTP_200_OK and isinstance(
+                        pdf_url, str
+                    ):
+                        pdf_download_url = pdf_url
+        except Exception as e:
+            # 如果獲取 PDF URL 失敗，記錄錯誤但不影響 email 發送
+            logger.warning(
+                f"Failed to get PDF URL for certificate application {application.id}: {e}",
+                exc_info=True,
+            )
+
+    # 構建 PDF 下載按鈕 HTML
+    if pdf_download_url:
+        pdf_download_section = f"""
+            <div style="text-align: center; margin: 20px 0;">
+                <a
+                    href="{pdf_download_url}"
+                    style="background-color: #2196F3; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; margin: 0 10px;"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    📥 下載 PDF 證書
+                </a>
+            </div>
+            <p style="text-align: center; color: #666; font-size: 12px; margin-top: 10px;">
+                PDF 連結有效期限為 3 天
+            </p>
+        """
 
     detail_item_style = "margin: 10px 0;"
     detail_items = [
@@ -2523,6 +2576,8 @@ def send_certificate_issue_notification_email(application):
                 </ul>
             </div>
 
+            {pdf_download_section}
+
             {certificate_link_section}
 
             <div
@@ -2562,6 +2617,11 @@ def send_certificate_issue_notification_email(application):
         else f"查看證書：{certificate_url}"
     )
 
+    # 添加 PDF 下載連結到純文字版本
+    pdf_text = ""
+    if pdf_download_url:
+        pdf_text = f"\n下載 PDF 證書：{pdf_download_url}\n（連結有效期限為 3 天）\n"
+
     # 純文字版本（用於不支持 HTML 的 email 客戶端）
     plain_message = "\n".join(
         [
@@ -2573,6 +2633,7 @@ def send_certificate_issue_notification_email(application):
             "",
             *details_text_lines,
             "",
+            pdf_text,
             certificate_text,
             "",
             "如有任何疑問，請聯繫相關診所或系統管理員。",
