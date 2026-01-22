@@ -33,6 +33,11 @@ class UserSerializer(serializers.ModelSerializer):
         required=False,
         allow_blank=True,
         help_text="Username (optional, will be auto-generated from email if not provided)",
+        error_messages={
+            "required": "使用者名稱為必填。",
+            "blank": "使用者名稱不能為空。",
+            "invalid": "無效的使用者名稱格式。",
+        },
     )
 
     password = serializers.CharField(
@@ -40,6 +45,10 @@ class UserSerializer(serializers.ModelSerializer):
         required=False,
         allow_blank=True,
         help_text="Password (write-only, required for user creation)",
+        error_messages={
+            "required": "密碼為必填。",
+            "blank": "密碼不能為空。",
+        },
     )
 
     # 診所權限相關欄位
@@ -265,12 +274,34 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
     """
 
     first_name = serializers.CharField(
-        required=True, help_text="名稱", allow_blank=True, allow_null=True
+        required=True,
+        help_text="名稱",
+        allow_blank=True,
+        allow_null=True,
+        error_messages={
+            "required": "名稱為必填。",
+            "blank": "名稱不能為空。",
+        },
     )
 
-    last_name = serializers.CharField(required=True, help_text="姓氏")
+    last_name = serializers.CharField(
+        required=True,
+        help_text="姓氏",
+        error_messages={
+            "required": "姓氏為必填。",
+            "blank": "姓氏不能為空。",
+        },
+    )
 
-    phone_number = serializers.CharField(required=True, help_text="手機號碼")
+    phone_number = serializers.CharField(
+        required=True,
+        help_text="手機號碼",
+        error_messages={
+            "required": "手機號碼為必填。",
+            "blank": "手機號碼不能為空。",
+            "invalid": "無效的手機號碼格式。",
+        },
+    )
 
     occupation_category = serializers.ChoiceField(
         choices=[], required=True, help_text="申請人的職業類別"  # 將在 __init__ 中設置
@@ -312,6 +343,10 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=True,
         help_text="Password (write-only, required for user creation)",
+        error_messages={
+            "required": "密碼為必填。",
+            "blank": "密碼不能為空。",
+        },
     )
 
     surgery_date = serializers.DateField(
@@ -453,17 +488,17 @@ class SimpleUserCreateSerializer(serializers.ModelSerializer):
         password = attrs.get("password")
 
         if not email:
-            raise serializers.ValidationError({"email": "Email is required."})
+            raise serializers.ValidationError({"email": "電子郵件為必填。"})
         try:
             from django.core.validators import validate_email
             from django.core.exceptions import ValidationError
 
             validate_email(email)
         except ValidationError:
-            raise serializers.ValidationError({"email": "Invalid email format."})
+            raise serializers.ValidationError({"email": "無效的電子郵件格式。"})
 
         if not password:
-            raise serializers.ValidationError({"password": "Password is required."})
+            raise serializers.ValidationError({"password": "密碼為必填。"})
 
         return attrs
 
@@ -593,10 +628,20 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         required=False,
         allow_blank=True,
         help_text="Phone number in international format (e.g., +1 234 5678901)",
+        error_messages={
+            "invalid": "無效的手機號碼格式。",
+            "max_length": "手機號碼長度不能超過 {max_length} 個字元。",
+        },
     )
 
     occupation_category = serializers.ChoiceField(
-        choices=[], required=True, help_text="申請人的職業類別"  # 將在 __init__ 中設置
+        choices=[],
+        required=True,
+        help_text="申請人的職業類別",  # 將在 __init__ 中設置
+        error_messages={
+            "required": "職業類別為必填。",
+            "invalid_choice": "無效的職業類別選擇。",
+        },
     )
 
     # 自定義職業類別欄位（當選擇「其他（請填寫）」時使用）
@@ -609,7 +654,14 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
     )
 
     # 證書申請相關欄位（註冊時填寫）
-    clinic_id = serializers.IntegerField(required=True, help_text="主要診所 ID")
+    clinic_id = serializers.IntegerField(
+        required=True,
+        help_text="主要診所 ID",
+        error_messages={
+            "required": "主要診所 ID 為必填。",
+            "invalid": "無效的診所 ID 格式。",
+        },
+    )
     consultation_clinic_id = serializers.IntegerField(
         required=False, allow_null=True, help_text="諮詢診所 ID（可選）"
     )
@@ -634,6 +686,10 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         choices=[],  # 將在 __init__ 中設置
         required=True,
         help_text="怎麼知道LBV認證活動資訊",
+        error_messages={
+            "required": "資訊來源為必填。",
+            "invalid_choice": "無效的資訊來源選擇。",
+        },
     )
 
     # 性別欄位
@@ -643,6 +699,9 @@ class UserCreateSerializer(DjoserUserCreateSerializer):
         allow_blank=True,
         allow_null=True,
         help_text="用戶性別",
+        error_messages={
+            "invalid_choice": "無效的性別選擇。",
+        },
     )
 
     # 生日欄位
@@ -820,7 +879,7 @@ class TwoFactorVerifySetupSerializer(serializers.Serializer):
             ValidationError: If code is not numeric
         """
         if not value.isdigit():
-            raise serializers.ValidationError("Code must contain only numbers.")
+            raise serializers.ValidationError("驗證碼只能包含數字。")
         return value
 
 
@@ -878,7 +937,7 @@ class TwoFactorVerifyLoginSerializer(serializers.Serializer):
             ValidationError: If code is not numeric
         """
         if not value.isdigit():
-            raise serializers.ValidationError("Code must contain only numbers.")
+            raise serializers.ValidationError("驗證碼只能包含數字。")
         return value
 
 
