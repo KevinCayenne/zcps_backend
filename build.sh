@@ -52,7 +52,7 @@ fi
 cd $directory ; zip -r "../$artifact" . -x '*.pyc'
 cd ..
 zip "$artifact" lambda_function.py
-zip -r "$artifact" announcement/ clinic/ config/ logs/ users/
+zip -r "$artifact" announcement/ clinic/ config/ logs/ scheduler/ users/
 
 if [ -d "$directory" ]; then
   rm -r "$directory"
