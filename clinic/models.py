@@ -17,7 +17,7 @@ class Clinic(BaseModel):
         max_length=255, verbose_name=_("診所名稱"), help_text=_("診所名稱")
     )
     number = models.CharField(
-        max_length=255, verbose_name=_("編號"), unique=True, help_text=_("診所編號")
+        max_length=255, verbose_name=_("門市名稱"), help_text=_("門市名稱")
     )
     address = models.CharField(
         max_length=255,
@@ -52,6 +52,12 @@ class Clinic(BaseModel):
         verbose_name = _("診所")
         verbose_name_plural = _("診所")
         ordering = ["-name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name", "number"],
+                name="unique_clinic_name_number",
+            )
+        ]
 
     def __str__(self):
         return self.name
@@ -83,7 +89,8 @@ class ClinicUserPermission(BaseModel):
         """返回診所用戶權限的字符串表示"""
         user_name = self.user.username if self.user else "Unknown"
         clinic_name = self.clinic.name if self.clinic else "Unknown"
-        return f"{user_name} - {clinic_name}"
+        clinic_number = self.clinic.number if self.clinic else "Unknown"
+        return f"{user_name} - {clinic_name} - {clinic_number}"
 
 
 class Doctor(BaseModel):
@@ -182,7 +189,8 @@ class Doctor(BaseModel):
 
     def __str__(self):
         clinic_name = self.clinic.name if self.clinic else "Unknown"
-        return f"{self.name} - {clinic_name}"
+        clinic_number = self.clinic.number if self.clinic else "Unknown"
+        return f"{self.name} - {clinic_name} - {clinic_number}"
 
 
 class CertificateApplication(BaseModel):
