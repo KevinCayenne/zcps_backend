@@ -16,7 +16,7 @@ class ClinicFilterSet(django_filters.FilterSet):
 
     Supports case-insensitive partial matching (icontains) for text fields:
     - name (診所名稱)
-    - number (編號)
+    - number (門市名稱)
     - address (地址)
     - phone (電話)
     - email (電子郵件)
@@ -32,7 +32,7 @@ class ClinicFilterSet(django_filters.FilterSet):
         lookup_expr="icontains", help_text="診所名稱（部分匹配，不區分大小寫）"
     )
     number = django_filters.CharFilter(
-        lookup_expr="icontains", help_text="診所編號（部分匹配，不區分大小寫）"
+        lookup_expr="icontains", help_text="門市名稱（部分匹配，不區分大小寫）"
     )
     address = django_filters.CharFilter(
         lookup_expr="icontains", help_text="地址（部分匹配，不區分大小寫）"

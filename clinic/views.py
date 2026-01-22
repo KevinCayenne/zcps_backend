@@ -215,12 +215,12 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
 
         **查詢參數：**
         - `name`: 診所名稱（可選，部分匹配，不區分大小寫）
-        - `number`: 診所編號（可選，部分匹配，不區分大小寫）
+        - `number`: 門市名稱（可選，部分匹配，不區分大小寫）
         - `address`: 地址（可選，部分匹配，不區分大小寫）
         - `phone`: 電話（可選，部分匹配，不區分大小寫）
         - `email`: 電子郵件（可選，部分匹配，不區分大小寫）
         - `website`: 網站（可選，部分匹配，不區分大小寫）
-        - `search`: 搜尋關鍵字（可選，會搜尋名稱、編號、地址、電話、email、網站）
+        - `search`: 搜尋關鍵字（可選，會搜尋名稱、門市名稱、地址、電話、email、網站）
         - `ordering`: 排序欄位（可選，如：name, -create_time, number）
         - `create_time__gte`: 建立時間（大於等於）
         - `create_time__lte`: 建立時間（小於等於）
@@ -233,7 +233,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
                 type=str,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="搜尋關鍵字（會搜尋名稱、編號、地址、電話、email、網站）",
+                description="搜尋關鍵字（會搜尋名稱、門市名稱、地址、電話、email、網站）",
             ),
             OpenApiParameter(
                 name="name",
@@ -247,7 +247,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
                 type=str,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="診所編號（部分匹配，不區分大小寫）",
+                description="門市名稱（部分匹配，不區分大小寫）",
             ),
         ],
     )
@@ -267,7 +267,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
         - 公開訪問，無需認證
 
         **返回內容：**
-        - 診所的完整資訊（名稱、編號、地址、電話、email、網站等）
+        - 診所的完整資訊（名稱、門市名稱、地址、電話、email、網站等）
         - 如果診所不存在，返回 404
         """,
     )
@@ -705,7 +705,7 @@ class SubmitCertificateApplicationView(APIView):
         <html>
         <body>
             <h2>證書申請驗證</h2>
-            <p>親愛的 {application.clinic.name} 診所：</p>
+            <p>親愛的 {application.clinic.name} - {application.clinic.number} 診所：</p>
             <p>您收到一份證書申請，申請人資訊如下：</p>
             <ul>
                 <li><strong>申請人姓名：</strong>{applicant_name}</li>
@@ -1771,6 +1771,7 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         # 獲取申請人資訊
         applicant_name = application.get_applicant_name() or "申請人"
         clinic_name = application.clinic.name if application.clinic else "診所"
+        clinic_number = application.clinic.number if application.clinic else "門市"
 
         # 使用 HTML 模板
         html_message = f"""
@@ -1781,7 +1782,7 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
             <p>您的證書申請已被取消。</p>
             <ul>
                 <li><strong>申請編號：</strong>#{application.id}</li>
-                <li><strong>診所名稱：</strong>{clinic_name}</li>
+                <li><strong>診所名稱：</strong>{clinic_name} - {clinic_number}</li>
                 <li><strong>申請時間：</strong>{application.create_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
                 <li><strong>取消時間：</strong>{application.update_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
             </ul>
@@ -2212,6 +2213,9 @@ class IssueCertificateView(APIView):
                 clinic_name = (
                     application.clinic.name if application.clinic else "未知診所"
                 )
+                clinic_number = (
+                    application.clinic.number if application.clinic else "未知門市"
+                )
                 # 獲取申請日期（格式：YYYYMMDD）
                 create_date = (
                     application.create_time.strftime("%Y%m%d")
@@ -2240,7 +2244,7 @@ class IssueCertificateView(APIView):
                         )
                 # 組合名稱
                 issue_request_data["name"] = (
-                    f"裸視美手術證書-{clinic_name}-{create_date}-{applicant_name}"
+                    f"裸視美手術證書-{clinic_name} - {clinic_number}-{create_date}-{applicant_name}"
                 )
             else:
                 issue_request_data["name"] = request.data.get("name")
@@ -2385,7 +2389,7 @@ class IssueCertificateView(APIView):
 
         # 步驟 7: 發送證書發放通知 (先實作Email通知)
         try:
-            send_certificate_issue_notification_email(application)
+            send_certificate_issue_notification_email(application, certificate_hash)
         except Exception as e:
             logger.error(
                 f"Failed to send certificate issue notification email for application {application.id}: {e}",
@@ -2406,7 +2410,7 @@ class IssueCertificateView(APIView):
         )
 
 
-def send_certificate_issue_notification_email(application):
+def send_certificate_issue_notification_email(application, certificate_hash):
     """
     發送證書發放通知 email 給申請人
 
@@ -2435,6 +2439,7 @@ def send_certificate_issue_notification_email(application):
     # 獲取申請人資訊
     applicant_name = application.get_applicant_name()
     clinic_name = application.clinic.name if application.clinic else "診所"
+    clinic_number = application.clinic.number if application.clinic else "門市"
     certificate_number = application.certificate_number or "待生成"
     issued_at = (
         application.issued_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -2448,11 +2453,64 @@ def send_certificate_issue_notification_email(application):
         frontend_url = getattr(settings, "CLIENT_FRONTEND_URL", "http://localhost:3001")
         certificate_url = f"{frontend_url}"
 
+    # 嘗試獲取 PDF 下載連結
+    pdf_download_url = None
+    pdf_download_section = ""
+    if certificate_hash:
+        try:
+            # 通過 hash 獲取證書資料
+            response_data, status_code = get_certificate(
+                cert_id=None, cert_hash=certificate_hash
+            )
+
+            # 檢查是否成功獲取證書資料
+            if status_code == status.HTTP_200_OK and isinstance(response_data, dict):
+                content = response_data.get("content", {})
+                # 嘗試從不同可能的欄位名稱獲取 PDF ID
+                pdf_id = (
+                    content.get("pdfld")
+                    or content.get("pdfId")
+                    or content.get("pdf_id")
+                    or content.get("pdfFileId")
+                )
+
+                if pdf_id:
+                    # 獲取 PDF URL
+                    pdf_url, pdf_status_code = get_pdf_url(pdf_id=str(pdf_id))
+                    if pdf_status_code == status.HTTP_200_OK and isinstance(
+                        pdf_url, str
+                    ):
+                        pdf_download_url = pdf_url
+        except Exception as e:
+            # 如果獲取 PDF URL 失敗，記錄錯誤但不影響 email 發送
+            logger.warning(
+                f"Failed to get PDF URL for certificate application {application.id}: {e}",
+                exc_info=True,
+            )
+
+    # 構建 PDF 下載按鈕 HTML
+    if pdf_download_url:
+        pdf_download_section = f"""
+            <div style="text-align: center; margin: 20px 0;">
+                <a
+                    href="{pdf_download_url}"
+                    style="background-color: #2196F3; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; margin: 0 10px;"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    📥 下載 PDF 證書
+                </a>
+            </div>
+            <p style="text-align: center; color: #666; font-size: 12px; margin-top: 10px;">
+                PDF 連結有效期限為 3 天
+            </p>
+        """
+
     detail_item_style = "margin: 10px 0;"
     detail_items = [
         ("申請編號", f"#{application.id}"),
         ("證書序號", certificate_number),
-        ("診所名稱", clinic_name),
+        ("診所名稱", f"{clinic_name} - {clinic_number}"),
     ]
     detail_items.append(("手術醫師", application.get_surgeon_name()))
     detail_items.append(("手術日期", application.get_surgery_date()))
@@ -2523,6 +2581,8 @@ def send_certificate_issue_notification_email(application):
                 </ul>
             </div>
 
+            {pdf_download_section}
+
             {certificate_link_section}
 
             <div
@@ -2546,7 +2606,7 @@ def send_certificate_issue_notification_email(application):
         "證書資訊：",
         f"- 申請編號：#{application.id}",
         f"- 證書序號：{certificate_number}",
-        f"- 診所名稱：{clinic_name}",
+        f"- 診所名稱：{clinic_name} - {clinic_number}",
     ]
     if application.surgeon_name:
         details_text_lines.append(f"- 手術醫師：{application.surgeon_name}")
@@ -2562,6 +2622,11 @@ def send_certificate_issue_notification_email(application):
         else f"查看證書：{certificate_url}"
     )
 
+    # 添加 PDF 下載連結到純文字版本
+    pdf_text = ""
+    if pdf_download_url:
+        pdf_text = f"\n下載 PDF 證書：{pdf_download_url}\n（連結有效期限為 3 天）\n"
+
     # 純文字版本（用於不支持 HTML 的 email 客戶端）
     plain_message = "\n".join(
         [
@@ -2573,6 +2638,7 @@ def send_certificate_issue_notification_email(application):
             "",
             *details_text_lines,
             "",
+            pdf_text,
             certificate_text,
             "",
             "如有任何疑問，請聯繫相關診所或系統管理員。",

@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: zcps_backend_postgres
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # redis:
+  #   image: redis:7
+  #   container_name: zcps_backend_redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+
+  zcps_backend:
+    container_name: zcps_backend
+    build:
+      context: ..
+      dockerfile: ./.devcontainer/Dockerfile
+    tty: true
+    entrypoint: [ "bash", "-c" ]
+    command: [ "sleep 1000 && /bin/bash" ]
+    env_file:
+      - .env
+    ports:
+      - "8001:8000"
+    volumes:
+      - ..:/workspace:cached
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:

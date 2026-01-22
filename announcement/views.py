@@ -224,7 +224,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
                 <h2 style="{header_styles}">新公告通知</h2>
-                <p>親愛的會員：</p>
+                <p>親愛的LBV會員：</p>
                 <p>我們發布了一則新公告：</p>
                 <div style="{highlight_styles}">
                     <h3 style="margin-top: 0; color: #2c3e50;">{announcement.title}</h3>
@@ -253,7 +253,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         plain_message = strip_tags(html_message)
         plain_message = f"""新公告通知
 
-            親愛的會員：
+            親愛的LBV會員：
 
             我們發布了一則新公告：{announcement.title}
 
