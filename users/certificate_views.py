@@ -1095,6 +1095,9 @@ def build_certs_data_from_template(
 
         # 自動帶入就診醫院
         hospital_name = clinic.name if clinic else ""
+        clinic_number = clinic.number if clinic else ""
+        if clinic_number:
+            hospital_name = f"{hospital_name} - {clinic_number}"
 
         # 自動帶入手術執行醫師
         # 優先從 certificate_application.surgeon_name 獲取，如果為空則從 certificate_data 中獲取

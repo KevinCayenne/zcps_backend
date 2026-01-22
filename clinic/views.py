@@ -215,12 +215,12 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
 
         **查詢參數：**
         - `name`: 診所名稱（可選，部分匹配，不區分大小寫）
-        - `number`: 診所編號（可選，部分匹配，不區分大小寫）
+        - `number`: 門市名稱（可選，部分匹配，不區分大小寫）
         - `address`: 地址（可選，部分匹配，不區分大小寫）
         - `phone`: 電話（可選，部分匹配，不區分大小寫）
         - `email`: 電子郵件（可選，部分匹配，不區分大小寫）
         - `website`: 網站（可選，部分匹配，不區分大小寫）
-        - `search`: 搜尋關鍵字（可選，會搜尋名稱、編號、地址、電話、email、網站）
+        - `search`: 搜尋關鍵字（可選，會搜尋名稱、門市名稱、地址、電話、email、網站）
         - `ordering`: 排序欄位（可選，如：name, -create_time, number）
         - `create_time__gte`: 建立時間（大於等於）
         - `create_time__lte`: 建立時間（小於等於）
@@ -233,7 +233,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
                 type=str,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="搜尋關鍵字（會搜尋名稱、編號、地址、電話、email、網站）",
+                description="搜尋關鍵字（會搜尋名稱、門市名稱、地址、電話、email、網站）",
             ),
             OpenApiParameter(
                 name="name",
@@ -247,7 +247,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
                 type=str,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="診所編號（部分匹配，不區分大小寫）",
+                description="門市名稱（部分匹配，不區分大小寫）",
             ),
         ],
     )
@@ -267,7 +267,7 @@ class PublicClinicViewSet(viewsets.ReadOnlyModelViewSet):
         - 公開訪問，無需認證
 
         **返回內容：**
-        - 診所的完整資訊（名稱、編號、地址、電話、email、網站等）
+        - 診所的完整資訊（名稱、門市名稱、地址、電話、email、網站等）
         - 如果診所不存在，返回 404
         """,
     )
@@ -705,7 +705,7 @@ class SubmitCertificateApplicationView(APIView):
         <html>
         <body>
             <h2>證書申請驗證</h2>
-            <p>親愛的 {application.clinic.name} 診所：</p>
+            <p>親愛的 {application.clinic.name} - {application.clinic.number} 診所：</p>
             <p>您收到一份證書申請，申請人資訊如下：</p>
             <ul>
                 <li><strong>申請人姓名：</strong>{applicant_name}</li>
@@ -1771,6 +1771,7 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
         # 獲取申請人資訊
         applicant_name = application.get_applicant_name() or "申請人"
         clinic_name = application.clinic.name if application.clinic else "診所"
+        clinic_number = application.clinic.number if application.clinic else "門市"
 
         # 使用 HTML 模板
         html_message = f"""
@@ -1781,7 +1782,7 @@ class CertificateApplicationViewSet(viewsets.ModelViewSet):
             <p>您的證書申請已被取消。</p>
             <ul>
                 <li><strong>申請編號：</strong>#{application.id}</li>
-                <li><strong>診所名稱：</strong>{clinic_name}</li>
+                <li><strong>診所名稱：</strong>{clinic_name} - {clinic_number}</li>
                 <li><strong>申請時間：</strong>{application.create_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
                 <li><strong>取消時間：</strong>{application.update_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
             </ul>
@@ -2212,6 +2213,9 @@ class IssueCertificateView(APIView):
                 clinic_name = (
                     application.clinic.name if application.clinic else "未知診所"
                 )
+                clinic_number = (
+                    application.clinic.number if application.clinic else "未知門市"
+                )
                 # 獲取申請日期（格式：YYYYMMDD）
                 create_date = (
                     application.create_time.strftime("%Y%m%d")
@@ -2240,7 +2244,7 @@ class IssueCertificateView(APIView):
                         )
                 # 組合名稱
                 issue_request_data["name"] = (
-                    f"裸視美手術證書-{clinic_name}-{create_date}-{applicant_name}"
+                    f"裸視美手術證書-{clinic_name} - {clinic_number}-{create_date}-{applicant_name}"
                 )
             else:
                 issue_request_data["name"] = request.data.get("name")
@@ -2435,6 +2439,7 @@ def send_certificate_issue_notification_email(application, certificate_hash):
     # 獲取申請人資訊
     applicant_name = application.get_applicant_name()
     clinic_name = application.clinic.name if application.clinic else "診所"
+    clinic_number = application.clinic.number if application.clinic else "門市"
     certificate_number = application.certificate_number or "待生成"
     issued_at = (
         application.issued_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -2505,7 +2510,7 @@ def send_certificate_issue_notification_email(application, certificate_hash):
     detail_items = [
         ("申請編號", f"#{application.id}"),
         ("證書序號", certificate_number),
-        ("診所名稱", clinic_name),
+        ("診所名稱", f"{clinic_name} - {clinic_number}"),
     ]
     detail_items.append(("手術醫師", application.get_surgeon_name()))
     detail_items.append(("手術日期", application.get_surgery_date()))
@@ -2601,7 +2606,7 @@ def send_certificate_issue_notification_email(application, certificate_hash):
         "證書資訊：",
         f"- 申請編號：#{application.id}",
         f"- 證書序號：{certificate_number}",
-        f"- 診所名稱：{clinic_name}",
+        f"- 診所名稱：{clinic_name} - {clinic_number}",
     ]
     if application.surgeon_name:
         details_text_lines.append(f"- 手術醫師：{application.surgeon_name}")

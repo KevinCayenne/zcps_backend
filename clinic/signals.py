@@ -85,6 +85,7 @@ def _send_cancellation_email(application):
     # 獲取申請人資訊
     applicant_name = application.get_applicant_name() or "申請人"
     clinic_name = application.clinic.name if application.clinic else "診所"
+    clinic_number = application.clinic.number if application.clinic else "門市"
 
     # 使用 HTML 模板
     html_message = f"""
@@ -95,7 +96,7 @@ def _send_cancellation_email(application):
         <p>您的證書申請已被取消。</p>
         <ul>
             <li><strong>申請編號：</strong>#{application.id}</li>
-            <li><strong>診所名稱：</strong>{clinic_name}</li>
+            <li><strong>診所名稱：</strong>{clinic_name} - {clinic_number}</li>
             <li><strong>申請時間：</strong>{application.create_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
             <li><strong>取消時間：</strong>{application.update_time.strftime('%Y-%m-%d %H:%M:%S')}</li>
         </ul>
