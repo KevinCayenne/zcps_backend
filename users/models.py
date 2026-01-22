@@ -29,7 +29,7 @@ class User(AbstractUser):
         unique=True,
         blank=False,
         error_messages={
-            "unique": "A user with this email already exists.",
+            "unique": "此電子郵件已被使用。",
         },
     )
 
@@ -42,6 +42,10 @@ class User(AbstractUser):
         unique=True,
         db_index=True,
         help_text="Phone number in international format (e.g., +1 234 5678901)",
+        error_messages={
+            "invalid": "無效的手機號碼格式。",
+            "max_length": "手機號碼長度不能超過 {max_length} 個字元。",
+        },
     )
 
     # OAuth fields
@@ -53,6 +57,9 @@ class User(AbstractUser):
         unique=True,
         db_index=True,
         help_text="Google OAuth user ID",
+        error_messages={
+            "unique": "此 Google ID 已被使用。",
+        },
     )
 
     profile_picture_url = models.URLField(
@@ -60,6 +67,9 @@ class User(AbstractUser):
         blank=True,
         null=True,
         help_text="URL to user profile picture from OAuth provider",
+        error_messages={
+            "invalid": "無效的大頭貼網址格式。",
+        },
     )
 
     # Email verification field
@@ -67,6 +77,9 @@ class User(AbstractUser):
         verbose_name=_("Email 驗證"),
         default=False,
         help_text="Whether user email has been verified",
+        error_messages={
+            "invalid": "無效的 Email 驗證狀態。",
+        },
     )
 
     # Two-Factor Authentication fields
@@ -74,6 +87,9 @@ class User(AbstractUser):
         verbose_name=_("是否啟用兩步驟驗證"),
         default=False,
         help_text="Whether user has enabled two-factor authentication",
+        error_messages={
+            "invalid": "無效的兩步驟驗證狀態。",
+        },
     )
 
     twofa_setup_date = models.DateTimeField(
