@@ -279,7 +279,7 @@ AWS_LAMBDA_FUNCTION_TIMEOUT = 60
 
 
 # Default from email address for sending emails
-DEFAULT_FROM_EMAIL = "LBV證書會員中心 <mail@lbv-certified.com.tw>"
+DEFAULT_FROM_EMAIL = "LBV證書認證中心 <mail@lbv-certified.com.tw>"
 
 
 # Django REST Framework Configuration
