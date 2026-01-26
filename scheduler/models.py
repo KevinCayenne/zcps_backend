@@ -17,10 +17,12 @@ class NotificationTask(BaseModel):
     contents = models.JSONField(
         _("Contents"), default=list
     )  # [{"channel": "sms", "body": "...", "title": "..."}]
+    roles = models.JSONField(_("Roles"), default=list, blank=True)
     targets = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         verbose_name=_("Targets"),
         related_name="notification_tasks_targets",
+        blank=True,
     )
 
     class Meta:

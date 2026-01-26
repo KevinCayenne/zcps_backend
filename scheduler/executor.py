@@ -44,6 +44,11 @@ class TaskExecutor:
     def run_task(self, task):
         # Optimized fetching
         targets = task.targets.all()
+        if not targets.exists() and task.roles:
+            from django.contrib.auth import get_user_model
+
+            User = get_user_model()
+            targets = User.objects.filter(role__in=task.roles)
 
         for content in task.contents:
             channel = content.get("channel")
