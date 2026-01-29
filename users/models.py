@@ -43,6 +43,7 @@ class User(AbstractUser):
         db_index=True,
         help_text="Phone number in international format (e.g., +1 234 5678901)",
         error_messages={
+            "unique": "此手機號碼已被使用。",
             "invalid": "無效的手機號碼格式。",
             "max_length": "手機號碼長度不能超過 {max_length} 個字元。",
         },

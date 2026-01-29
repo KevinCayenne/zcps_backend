@@ -1097,7 +1097,7 @@ def build_certs_data_from_template(
         hospital_name = clinic.name if clinic else ""
         clinic_number = clinic.number if clinic else ""
         if clinic_number:
-            hospital_name = f"{hospital_name} - {clinic_number}"
+            hospital_name = f"{clinic_number}"
 
         # 自動帶入手術執行醫師
         # 優先從 certificate_application.surgeon_name 獲取，如果為空則從 certificate_data 中獲取
@@ -2077,7 +2077,14 @@ class RevokeCertificateView(APIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=True,
-                description="證書的 ID",
+                description="證書的 ID（外部系統的證書 ID，用於調用外部 API 撤銷）",
+            ),
+            OpenApiParameter(
+                name="application_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="證書申請 ID（用於更新內部申請狀態為已取消）",
             ),
         ],
         examples=[
@@ -2165,8 +2172,37 @@ class RevokeCertificateView(APIView):
         """
         # 獲取查詢參數
         cert_id = request.query_params.get("id")
+        application_id = request.query_params.get("application_id")
+        application = None
 
         # 驗證必要參數
+        if not cert_id and not application_id:
+            return Response(
+                {"error": "id 或 application_id 參數必須提供其中一個"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 若提供 application_id，先取得申請資料（之後用於更新內部狀態）
+        if application_id:
+            try:
+                application_id = int(application_id)
+            except ValueError:
+                return Response(
+                    {"error": "application_id 必須是有效的整數"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                from clinic.models import CertificateApplication
+
+                application = CertificateApplication.objects.select_related("user").get(
+                    id=application_id
+                )
+            except CertificateApplication.DoesNotExist:
+                return Response(
+                    {"error": "找不到指定的證書申請"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
         if not cert_id:
             return Response(
                 {"error": "id 參數是必需的"},
@@ -2176,7 +2212,7 @@ class RevokeCertificateView(APIView):
         # 驗證 cert_id 是否為整數
         try:
             cert_id = int(cert_id)
-        except ValueError:
+        except (TypeError, ValueError):
             return Response(
                 {"error": "id 必須是有效的整數"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -2196,16 +2232,79 @@ class RevokeCertificateView(APIView):
                         from clinic.models import CertificateApplication
                         from clinic.enums import CertificateApplicationStatus
 
-                        # 通過 certificate_group_id 查找對應的證書申請
-                        # cert_id 就是 certificate_group_id
-                        applications = CertificateApplication.objects.filter(
-                            certificate_group_id=cert_id
-                        )
+                        # 嘗試用多種可能欄位對應到 certificate_group_id / certificate_hash
+                        candidate_group_ids = {cert_id}
+                        candidate_hashes = set()
 
-                        # 更新所有相關申請的狀態為「已取消」
-                        updated_count = applications.update(
-                            status=CertificateApplicationStatus.CANCELLED
+                        content = (
+                            response_data.get("content")
+                            if isinstance(response_data.get("content"), dict)
+                            else {}
                         )
+                        for value in [
+                            response_data.get("certRecordGroupId"),
+                            response_data.get("certificateGroupId"),
+                            content.get("certRecordGroupId"),
+                            content.get("certificateGroupId"),
+                            content.get("id"),
+                        ]:
+                            if value is None:
+                                continue
+                            try:
+                                candidate_group_ids.add(int(value))
+                            except (TypeError, ValueError):
+                                pass
+
+                        for value in [
+                            response_data.get("certHash"),
+                            response_data.get("certificateHash"),
+                            content.get("hash"),
+                            content.get("certHash"),
+                            content.get("certificateHash"),
+                        ]:
+                            if value:
+                                candidate_hashes.add(str(value))
+
+                        def _cancel_applications(queryset):
+                            count = 0
+                            for application_obj in queryset:
+                                if (
+                                    application_obj.status
+                                    == CertificateApplicationStatus.CANCELLED
+                                ):
+                                    continue
+                                application_obj.status = (
+                                    CertificateApplicationStatus.CANCELLED
+                                )
+                                application_obj.save(update_fields=["status"])
+                                count += 1
+                            return count
+
+                        # 先用 group_id 更新
+                        applications = CertificateApplication.objects.filter(
+                            certificate_group_id__in=candidate_group_ids
+                        )
+                        updated_count = _cancel_applications(applications)
+
+                        # 若找不到，再嘗試用 hash 更新
+                        if updated_count == 0 and candidate_hashes:
+                            applications = CertificateApplication.objects.filter(
+                                certificate_hash__in=candidate_hashes
+                            )
+                            updated_count = _cancel_applications(applications)
+
+                        # 若仍找不到，嘗試用使用者的 cert_record_group_id 回推
+                        if updated_count == 0:
+                            applications = CertificateApplication.objects.filter(
+                                user__cert_record_group_id__in=candidate_group_ids
+                            )
+                            updated_count = _cancel_applications(applications)
+
+                        # 若帶 application_id，確保該筆狀態更新為已取消
+                        if application:
+                            updated_count = _cancel_applications(
+                                CertificateApplication.objects.filter(id=application.id)
+                            )
 
                         if updated_count > 0:
                             logger.info(
@@ -2213,7 +2312,10 @@ class RevokeCertificateView(APIView):
                             )
                         else:
                             logger.warning(
-                                f"成功撤銷證書 {cert_id}，但未找到對應的證書申請記錄（certificate_group_id={cert_id}）"
+                                "成功撤銷證書 %s，但未找到對應的證書申請記錄（group_ids=%s, hashes=%s）",
+                                cert_id,
+                                sorted(candidate_group_ids),
+                                sorted(candidate_hashes),
                             )
                     except Exception as e:
                         # 即使更新狀態失敗，也不影響撤銷操作的成功響應
