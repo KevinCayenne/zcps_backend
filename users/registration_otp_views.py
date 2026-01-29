@@ -253,7 +253,7 @@ class SendRegistrationOTPView(APIView):
                 subject = "您的註冊驗證碼"
                 message = f"""親愛的LBV用戶，
 
-您的註冊驗證碼是：
+您正在註冊LBV裸視美老花雷射認證機制證書，驗證碼為：
 
 {code}
 
@@ -330,7 +330,7 @@ class SendRegistrationOTPView(APIView):
             # 發送 OTP 到手機號碼
             try:
                 # 構建簡訊內容
-                sms_content = f"您的註冊驗證碼是：{code}，此驗證碼將在 10 分鐘後過期。如果您沒有申請註冊，請忽略此簡訊。"
+                sms_content = f"您正在註冊LBV裸視美老花雷射認證機制證書，驗證碼為：{code}，僅10分鐘有效。"
 
                 # 發送簡訊
                 result = send_sms(cleaned_phone, sms_content)
