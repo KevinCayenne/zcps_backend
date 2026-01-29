@@ -9,9 +9,11 @@ from django.urls import path, re_path
 from .views import (
     CustomUserViewSet,
     VerifyEmailView,
+    LogoutView,
+)
+from .registration_otp_views import (
     SendRegistrationOTPView,
     VerifyRegistrationOTPView,
-    LogoutView,
 )
 
 urlpatterns = [

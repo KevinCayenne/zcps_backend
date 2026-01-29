@@ -2221,11 +2221,6 @@ class RevokeCertificateView(APIView):
         # 調用 revoke_certificate 函數撤銷證書
         response_data, status_code = revoke_certificate(cert_id)
 
-        print("response_data:")
-        print(response_data)
-        print("status_code:")
-        print(status_code)
-
         # 如果撤銷成功（200 或 201），更新對應的證書申請狀態為「已取消」
         if status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
             if response_data and isinstance(response_data, dict):

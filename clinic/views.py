@@ -45,6 +45,7 @@ from users.certificate_views import (
     get_certificate,
     get_pdf_url,
 )
+from users.sns_sender.utils import send_sms
 
 logger = logging.getLogger(__name__)
 
@@ -2387,12 +2388,20 @@ class IssueCertificateView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # 步驟 7: 發送證書發放通知 (先實作Email通知)
+        # 步驟 7: 發送證書發放通知 (Email + SMS)
         try:
             send_certificate_issue_notification_email(application, certificate_hash)
         except Exception as e:
             logger.error(
                 f"Failed to send certificate issue notification email for application {application.id}: {e}",
+                exc_info=True,
+            )
+            # 即使發送失敗，也繼續返回成功（證書已經發放）
+        try:
+            send_certificate_issue_notification_sms(application)
+        except Exception as e:
+            logger.error(
+                f"Failed to send certificate issue notification SMS for application {application.id}: {e}",
                 exc_info=True,
             )
             # 即使發送失敗，也繼續返回成功（證書已經發放）
@@ -2404,7 +2413,7 @@ class IssueCertificateView(APIView):
                 "certificate_group_id": certificate_group_id,
                 "certificate_hash": certificate_hash,
                 "status": application.status,
-                "message": "證書已成功發放",
+                "message": "證書已成功發放，通知已發送",
             },
             status=status.HTTP_200_OK,
         )
@@ -2663,6 +2672,50 @@ def send_certificate_issue_notification_email(application, certificate_hash):
         f"Certificate issue notification email sent successfully to {applicant_email} "
         f"for application {application.id} (user: {application.user.id if application.user else 'N/A'}, "
         f"clinic: {application.clinic.id if application.clinic else 'N/A'})"
+    )
+
+
+def send_certificate_issue_notification_sms(application):
+    """
+    發送證書發放通知簡訊給申請人
+
+    Args:
+        application: CertificateApplication 實例（必須已發證）
+
+    Raises:
+        Exception: 如果發送失敗
+    """
+    applicant_phone = None
+    if application.certificate_data and isinstance(application.certificate_data, dict):
+        applicant_phone = (
+            application.certificate_data.get("phone_number")
+            or application.certificate_data.get("phone")
+            or application.certificate_data.get("mobile")
+        )
+
+    if not applicant_phone and application.user:
+        applicant_phone = application.user.phone_number
+
+    if not applicant_phone:
+        raise ValueError(
+            f"Application {application.id} does not have applicant phone number"
+        )
+
+    # clinic_name = application.clinic.name if application.clinic else "診所"
+    # clinic_number = application.clinic.number if application.clinic else "門市"
+    # certificate_number = application.certificate_number or "待生成"
+    frontend_url = getattr(settings, "CLIENT_FRONTEND_URL", "http://localhost:3001")
+
+    message = (
+        f"您好，您的LBV裸視美老花雷射證書已發放，請點選連結下載，謝謝 {frontend_url}"
+    )
+
+    result = send_sms(applicant_phone, message)
+    if result.get("status") == "error":
+        raise ValueError(result.get("message", "簡訊發送失敗"))
+
+    logger.info(
+        f"Certificate issue SMS sent to {applicant_phone} for application {application.id}"
     )
 
 
