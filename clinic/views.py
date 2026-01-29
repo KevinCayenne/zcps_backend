@@ -2706,9 +2706,7 @@ def send_certificate_issue_notification_sms(application):
     # certificate_number = application.certificate_number or "待生成"
     frontend_url = getattr(settings, "CLIENT_FRONTEND_URL", "http://localhost:3001")
 
-    message = (
-        f"您好，您的LBV裸視美老花雷射證書已發放，請點選連結下載，謝謝 {frontend_url}"
-    )
+    message = f"您好，您的LBV裸視美老花雷射證書已發放，請點選連結下載，謝謝"
 
     result = send_sms(applicant_phone, message)
     if result.get("status") == "error":
