@@ -46,6 +46,7 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(write_only=True, required=False)
     user_email = serializers.EmailField(source="user.email", read_only=True)
     user_username = serializers.CharField(source="user.username", read_only=True)
+    user_birthday = serializers.DateField(source="user.birth_date", read_only=True)
     applicant_name = serializers.SerializerMethodField(
         help_text="申請人姓名（從用戶獲取）"
     )
@@ -64,6 +65,7 @@ class CertificateApplicationSerializer(serializers.ModelSerializer):
             "user_id",
             "user_email",
             "user_username",
+            "user_birthday",
             "clinic",
             "clinic_id",
             "consultation_clinic",
