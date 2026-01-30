@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Cache key prefix for verification status
 VERIFICATION_CACHE_PREFIX = "reg_verification_"
+VERIFICATION_PHONE_CACHE_PREFIX = "reg_verification_phone_"
 CACHE_TIMEOUT = 600  # 10 minutes
 UPDATE_OTP_CACHE_PREFIX = "update_contact_otp_"
 UPDATE_OTP_RATE_LIMIT_PREFIX = "update_contact_otp_rate_"
@@ -45,6 +46,11 @@ UPDATE_OTP_RATE_LIMIT_SECONDS = 60
 def get_verification_cache_key(email: str) -> str:
     """Generate cache key for verification status."""
     return f"{VERIFICATION_CACHE_PREFIX}{email}"
+
+
+def get_phone_verification_cache_key(phone_number: str) -> str:
+    """Generate cache key for phone verification status."""
+    return f"{VERIFICATION_PHONE_CACHE_PREFIX}{phone_number}"
 
 
 def set_verification_status(
@@ -76,6 +82,31 @@ def get_verification_status(email: str) -> dict:
 def clear_verification_status(email: str):
     """Clear verification status from cache."""
     cache_key = get_verification_cache_key(email)
+    cache.delete(cache_key)
+
+
+def set_phone_verification_status(phone_number: str, phone_verified: bool = False):
+    """Store phone verification status in cache."""
+    cache_key = get_phone_verification_cache_key(phone_number)
+    cache.set(
+        cache_key,
+        {
+            "phone_number": phone_number,
+            "phone_verified": phone_verified,
+        },
+        CACHE_TIMEOUT,
+    )
+
+
+def get_phone_verification_status(phone_number: str) -> dict:
+    """Get phone verification status from cache."""
+    cache_key = get_phone_verification_cache_key(phone_number)
+    return cache.get(cache_key, {})
+
+
+def clear_phone_verification_status(phone_number: str):
+    """Clear phone verification status from cache."""
+    cache_key = get_phone_verification_cache_key(phone_number)
     cache.delete(cache_key)
 
 
@@ -435,9 +466,8 @@ class VerifyRegistrationOTPView(APIView):
         驗證註冊用的 OTP 驗證碼（支援順序驗證：先 Email 後手機號碼）。
 
         **驗證流程：**
-        1. 先驗證 Email OTP
-        2. Email 驗證成功後，才能驗證手機號碼 OTP
-        3. 兩個都驗證成功後，才能進行註冊
+        1. Email 與手機號碼可獨立驗證（順序不限）
+        2. 兩個都驗證成功後，才能進行註冊
 
         **驗證規則：**
         - OTP 必須在 10 分鐘內使用
@@ -445,7 +475,7 @@ class VerifyRegistrationOTPView(APIView):
         - 驗證失敗超過 5 次需重新發送
         - email 或手機號碼必須尚未註冊
         - 必須提供 email 或 phone_number 其中一個（不能同時為空）
-        - 驗證手機號碼時，必須先驗證過 Email
+        - Email 與手機號碼驗證順序不限
 
         **返回結果：**
         - `verified`: true 表示驗證成功
@@ -467,11 +497,7 @@ class VerifyRegistrationOTPView(APIView):
                     required=False,
                 ),
                 "phone_number": serializers.CharField(
-                    help_text="要驗證的手機號碼（與 email 二選一，需先驗證 Email）",
-                    required=False,
-                ),
-                "verification_email": serializers.EmailField(
-                    help_text="驗證手機號碼時必須提供已驗證的 email（僅在驗證手機號碼時需要）",
+                    help_text="要驗證的手機號碼（與 email 二選一）",
                     required=False,
                 ),
                 "code": serializers.CharField(help_text="6 位數驗證碼"),
@@ -485,11 +511,7 @@ class VerifyRegistrationOTPView(APIView):
             ),
             OpenApiExample(
                 "Verify OTP via SMS",
-                value={
-                    "phone_number": "+886912345678",
-                    "verification_email": "user@example.com",
-                    "code": "123456",
-                },
+                value={"phone_number": "+886912345678", "code": "123456"},
                 request_only=True,
             ),
         ],
@@ -654,38 +676,6 @@ class VerifyRegistrationOTPView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # 檢查是否已驗證 Email（必須先驗證 Email）
-            # 從 cache 中查找是否有對應的 email 驗證狀態
-            # 需要從 request 中獲取 email，或者要求用戶在驗證手機時提供 email
-            verification_email = request.data.get("verification_email", "").strip()
-            if not verification_email:
-                return Response(
-                    {
-                        "error": "驗證手機號碼時，必須提供已驗證的 email（verification_email 參數）"
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # 驗證 email 格式
-            try:
-                validate_email(verification_email)
-            except ValidationError:
-                return Response(
-                    {"error": "verification_email 格式無效"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # 檢查 Email 是否已驗證
-            verification_status = get_verification_status(verification_email)
-            if not verification_status.get("email_verified", False):
-                return Response(
-                    {
-                        "verified": False,
-                        "error": "請先驗證 Email，才能驗證手機號碼",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
             # 查找最新的未使用 OTP（使用 email 欄位存儲手機號碼）
             otp = (
                 EmailVerificationOTP.objects.filter(email=cleaned_phone, is_used=False)
@@ -734,11 +724,8 @@ class VerifyRegistrationOTPView(APIView):
             otp.save(update_fields=["is_used"])
 
             # 更新驗證狀態（手機號碼已驗證）
-            set_verification_status(
-                email=verification_email,
-                phone_number=cleaned_phone,
-                email_verified=True,
-                phone_verified=True,
+            set_phone_verification_status(
+                phone_number=cleaned_phone, phone_verified=True
             )
 
             # 生成臨時驗證 token
@@ -747,10 +734,10 @@ class VerifyRegistrationOTPView(APIView):
             return Response(
                 {
                     "verified": True,
-                    "message": "手機號碼驗證成功，兩個驗證都已完成，可以進行註冊",
-                    "email_verified": True,
+                    "message": "手機號碼驗證成功",
+                    "email_verified": False,
                     "phone_verified": True,
-                    "all_verified": True,
+                    "all_verified": False,
                     "token": verification_token,
                 },
                 status=status.HTTP_200_OK,

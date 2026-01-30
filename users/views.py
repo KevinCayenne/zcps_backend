@@ -29,6 +29,8 @@ from .models import User
 from .registration_otp_views import (
     get_verification_status,
     clear_verification_status,
+    get_phone_verification_status,
+    clear_phone_verification_status,
 )
 from .permissions import IsAdminRolePermission
 from config.paginator import StandardResultsSetPagination
@@ -391,10 +393,10 @@ class CustomUserViewSet(DjoserUserViewSet):
                     import re
 
                     cleaned_phone = re.sub(r"[^\d+]", "", phone_number)
-                    if (
-                        not verification_status.get("phone_verified", False)
-                        or verification_status.get("phone_number") != cleaned_phone
-                    ):
+                    phone_verification_status = get_phone_verification_status(
+                        cleaned_phone
+                    )
+                    if not phone_verification_status.get("phone_verified", False):
                         return Response(
                             {"error": "請先驗證手機號碼才能註冊"},
                             status=status.HTTP_400_BAD_REQUEST,
@@ -609,6 +611,12 @@ class CustomUserViewSet(DjoserUserViewSet):
             # 註冊成功後，清除驗證狀態
             if email:
                 clear_verification_status(email)
+            if phone_number:
+                import re
+
+                cleaned_phone = re.sub(r"[^\d+]", "", phone_number)
+                if cleaned_phone:
+                    clear_phone_verification_status(cleaned_phone)
 
             # 發送郵件（在事務外，避免影響數據保存）
             # 如果提供了證書申請相關欄位，發送證書驗證郵件
