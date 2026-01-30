@@ -14,6 +14,8 @@ from .views import (
 from .registration_otp_views import (
     SendRegistrationOTPView,
     VerifyRegistrationOTPView,
+    SendUpdateContactOTPView,
+    VerifyUpdateContactOTPView,
 )
 
 urlpatterns = [
@@ -28,6 +30,16 @@ urlpatterns = [
         "users/verify-registration-otp/",
         VerifyRegistrationOTPView.as_view(),
         name="user-verify-registration-otp",
+    ),
+    path(
+        "users/send-update-contact-otp/",
+        SendUpdateContactOTPView.as_view(),
+        name="user-send-update-contact-otp",
+    ),
+    path(
+        "users/verify-update-contact-otp/",
+        VerifyUpdateContactOTPView.as_view(),
+        name="user-verify-update-contact-otp",
     ),
     # Logout endpoint
     path("logout/", LogoutView.as_view(), name="logout"),
