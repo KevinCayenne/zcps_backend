@@ -10,7 +10,7 @@ Supports sequential verification flow:
 from rest_framework import status, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from drf_spectacular.utils import (
     extend_schema,
     OpenApiResponse,
@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 # Cache key prefix for verification status
 VERIFICATION_CACHE_PREFIX = "reg_verification_"
 CACHE_TIMEOUT = 600  # 10 minutes
+UPDATE_OTP_CACHE_PREFIX = "update_contact_otp_"
+UPDATE_OTP_RATE_LIMIT_PREFIX = "update_contact_otp_rate_"
+UPDATE_OTP_TIMEOUT = 600  # 10 minutes
+UPDATE_OTP_RATE_LIMIT_SECONDS = 60
 
 
 def get_verification_cache_key(email: str) -> str:
@@ -72,6 +76,46 @@ def get_verification_status(email: str) -> dict:
 def clear_verification_status(email: str):
     """Clear verification status from cache."""
     cache_key = get_verification_cache_key(email)
+    cache.delete(cache_key)
+
+
+def get_update_otp_cache_key(user_id: int, method: str, target: str) -> str:
+    """Generate cache key for update contact OTP."""
+    return f"{UPDATE_OTP_CACHE_PREFIX}{user_id}:{method}:{target}"
+
+
+def get_update_otp_rate_key(user_id: int, method: str, target: str) -> str:
+    """Generate cache key for update contact OTP rate limit."""
+    return f"{UPDATE_OTP_RATE_LIMIT_PREFIX}{user_id}:{method}:{target}"
+
+
+def set_update_otp(
+    user_id: int, method: str, target: str, code: str, expires_at
+) -> None:
+    """Store update contact OTP in cache."""
+    cache_key = get_update_otp_cache_key(user_id, method, target)
+    cache.set(
+        cache_key,
+        {
+            "code": code,
+            "expires_at": expires_at,
+            "failed_attempts": 0,
+            "target": target,
+            "method": method,
+        },
+        UPDATE_OTP_TIMEOUT,
+    )
+
+
+def get_update_otp(user_id: int, method: str, target: str) -> dict:
+    """Get update contact OTP from cache."""
+    cache_key = get_update_otp_cache_key(user_id, method, target)
+    return cache.get(cache_key, {})
+
+
+def clear_update_otp(user_id: int, method: str, target: str) -> None:
+    """Clear update contact OTP from cache."""
+    cache_key = get_update_otp_cache_key(user_id, method, target)
     cache.delete(cache_key)
 
 
@@ -711,3 +755,507 @@ class VerifyRegistrationOTPView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+
+
+class SendUpdateContactOTPView(APIView):
+    """
+    API endpoint to send OTP for updating email or phone number.
+
+    POST /auth/users/send-update-contact-otp/
+    Requires authentication.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["User Management"],
+        summary="Send update contact OTP (Authenticated)",
+        description="""
+        發送更新 email 或手機號碼的 OTP 驗證碼。
+
+        **流程說明：**
+        1. 已登入用戶輸入新的 email 或手機號碼
+        2. 調用此 API 發送 OTP
+        3. 系統發送 6 位數驗證碼到新 email 或新手機號碼
+        4. 用戶收到驗證碼後，調用驗證 API 進行更新
+
+        **重要事項：**
+        - OTP 有效期為 10 分鐘
+        - 每個目標值（email/手機號碼）1 分鐘內只能發送一次
+        - 必須提供 email 或 phone_number 其中一個，不能同時提供
+        """,
+        request=inline_serializer(
+            name="SendUpdateContactOTPRequest",
+            fields={
+                "email": serializers.EmailField(
+                    help_text="要更新的新 email（與 phone_number 二選一）",
+                    required=False,
+                ),
+                "phone_number": serializers.CharField(
+                    help_text="要更新的新手機號碼（與 email 二選一）",
+                    required=False,
+                ),
+            },
+        ),
+        examples=[
+            OpenApiExample(
+                "Send Update OTP via Email",
+                value={"email": "new@example.com"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Send Update OTP via SMS",
+                value={"phone_number": "+886912345678"},
+                request_only=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description="OTP 已發送",
+                response=inline_serializer(
+                    name="SendUpdateContactOTPSuccessResponse",
+                    fields={
+                        "message": serializers.CharField(help_text="成功訊息"),
+                        "expires_at": serializers.DateTimeField(
+                            help_text="OTP 過期時間"
+                        ),
+                        "method": serializers.CharField(
+                            help_text="發送方式：EMAIL 或 SMS"
+                        ),
+                    },
+                ),
+            ),
+            400: OpenApiResponse(
+                description="Bad Request - 參數錯誤或格式無效",
+                response=inline_serializer(
+                    name="SendUpdateContactOTPErrorResponse",
+                    fields={
+                        "error": serializers.CharField(help_text="錯誤訊息"),
+                    },
+                ),
+            ),
+            429: OpenApiResponse(
+                description="Too Many Requests - 發送頻率過高",
+                response=inline_serializer(
+                    name="SendUpdateContactOTPRateLimitResponse",
+                    fields={
+                        "error": serializers.CharField(help_text="錯誤訊息"),
+                    },
+                ),
+            ),
+        },
+    )
+    def post(self, request):
+        """
+        發送更新聯絡資料用的 OTP 驗證碼到新 email 或手機號碼
+        """
+        user = request.user
+        email = request.data.get("email", "").strip()
+        phone_number = request.data.get("phone_number", "").strip()
+
+        if not email and not phone_number:
+            return Response(
+                {"error": "必須提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if email and phone_number:
+            return Response(
+                {"error": "只能提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        if email:
+            try:
+                validate_email(email)
+            except ValidationError:
+                return Response(
+                    {"error": "email 格式無效"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if user.email and user.email.lower() == email.lower():
+                return Response(
+                    {"error": "新 email 不能與目前的 email 相同"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if User.objects.filter(email__iexact=email).exclude(id=user.id).exists():
+                return Response(
+                    {"error": "此 email 已被使用"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            rate_key = get_update_otp_rate_key(user.id, "EMAIL", email.lower())
+            if cache.get(rate_key):
+                return Response(
+                    {"error": "請稍候再試，發送頻率過高"},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            cache.set(rate_key, True, UPDATE_OTP_RATE_LIMIT_SECONDS)
+
+            set_update_otp(
+                user_id=user.id,
+                method="EMAIL",
+                target=email.lower(),
+                code=code,
+                expires_at=expires_at,
+            )
+
+            try:
+                subject = "您的聯絡資料更新驗證碼"
+                message = f"""親愛的LBV用戶，
+
+您正在更新帳號的聯絡 email，驗證碼為：
+
+{code}
+
+此驗證碼將在 10 分鐘後過期。
+
+如果您沒有申請更新，請忽略此郵件。
+
+謝謝！
+"""
+
+                email_msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[email],
+                )
+                email_msg.send(fail_silently=False)
+                logger.info(f"Update contact OTP email sent successfully to {email}")
+            except Exception as e:
+                logger.error(f"Failed to send update OTP email to {email}: {e}")
+
+            return Response(
+                {
+                    "message": "驗證碼已發送到您的 email",
+                    "expires_at": expires_at,
+                    "method": "EMAIL",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        cleaned_phone = re.sub(r"[^\d+]", "", phone_number)
+        if not cleaned_phone or len(cleaned_phone) < 8:
+            return Response(
+                {"error": "手機號碼格式無效"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.phone_number and user.phone_number == cleaned_phone:
+            return Response(
+                {"error": "新手機號碼不能與目前的手機號碼相同"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(phone_number=cleaned_phone).exclude(id=user.id).exists():
+            return Response(
+                {"error": "此手機號碼已被使用"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        rate_key = get_update_otp_rate_key(user.id, "SMS", cleaned_phone)
+        if cache.get(rate_key):
+            return Response(
+                {"error": "請稍候再試，發送頻率過高"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        cache.set(rate_key, True, UPDATE_OTP_RATE_LIMIT_SECONDS)
+
+        set_update_otp(
+            user_id=user.id,
+            method="SMS",
+            target=cleaned_phone,
+            code=code,
+            expires_at=expires_at,
+        )
+
+        try:
+            sms_content = f"您正在更新帳號聯絡手機，驗證碼為：{code}，僅10分鐘有效。"
+            result = send_sms(cleaned_phone, sms_content)
+            if result.get("status") == "error":
+                error_message = result.get("message", "簡訊發送失敗")
+                logger.error(
+                    f"Failed to send update OTP SMS to {cleaned_phone}: {error_message}"
+                )
+                clear_update_otp(user.id, "SMS", cleaned_phone)
+                return Response(
+                    {"error": error_message},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            logger.info(f"Update contact OTP SMS sent successfully to {cleaned_phone}")
+        except Exception as e:
+            logger.error(f"Failed to send update OTP SMS to {cleaned_phone}: {e}")
+            clear_update_otp(user.id, "SMS", cleaned_phone)
+            return Response(
+                {"error": f"簡訊發送失敗: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "message": "驗證碼已發送到您的手機",
+                "expires_at": expires_at,
+                "method": "SMS",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class VerifyUpdateContactOTPView(APIView):
+    """
+    API endpoint to verify OTP and update email or phone number.
+
+    POST /auth/users/verify-update-contact-otp/
+    Requires authentication.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["User Management"],
+        summary="Verify update contact OTP (Authenticated)",
+        description="""
+        驗證更新聯絡資料的 OTP，並在驗證成功後更新資料。
+
+        **流程說明：**
+        1. 調用發送 OTP API
+        2. 用戶輸入收到的 OTP
+        3. 驗證成功後立即更新 email 或手機號碼
+
+        **注意事項：**
+        - 必須提供 email 或 phone_number 其中一個
+        - 驗證碼錯誤超過 5 次需重新發送
+        """,
+        request=inline_serializer(
+            name="VerifyUpdateContactOTPRequest",
+            fields={
+                "email": serializers.EmailField(
+                    help_text="要更新的新 email（與 phone_number 二選一）",
+                    required=False,
+                ),
+                "phone_number": serializers.CharField(
+                    help_text="要更新的新手機號碼（與 email 二選一）",
+                    required=False,
+                ),
+                "code": serializers.CharField(help_text="6 位數驗證碼"),
+            },
+        ),
+        examples=[
+            OpenApiExample(
+                "Verify Update OTP via Email",
+                value={"email": "new@example.com", "code": "123456"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Verify Update OTP via SMS",
+                value={"phone_number": "+886912345678", "code": "123456"},
+                request_only=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description="更新成功",
+                response=inline_serializer(
+                    name="VerifyUpdateContactOTPSuccessResponse",
+                    fields={
+                        "updated": serializers.BooleanField(help_text="是否更新成功"),
+                        "message": serializers.CharField(help_text="狀態訊息"),
+                        "email": serializers.EmailField(
+                            required=False, help_text="更新後 email"
+                        ),
+                        "phone_number": serializers.CharField(
+                            required=False, help_text="更新後手機號碼"
+                        ),
+                    },
+                ),
+            ),
+            400: OpenApiResponse(
+                description="Bad Request - 參數錯誤或驗證失敗",
+                response=inline_serializer(
+                    name="VerifyUpdateContactOTPErrorResponse",
+                    fields={
+                        "error": serializers.CharField(help_text="錯誤訊息"),
+                    },
+                ),
+            ),
+        },
+    )
+    def post(self, request):
+        """
+        驗證更新聯絡資料用 OTP，並更新 email 或手機號碼
+        """
+        user = request.user
+        email = request.data.get("email", "").strip()
+        phone_number = request.data.get("phone_number", "").strip()
+        code = request.data.get("code", "").strip()
+
+        if not email and not phone_number:
+            return Response(
+                {"error": "必須提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if email and phone_number:
+            return Response(
+                {"error": "只能提供 email 或 phone_number 其中一個參數"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not code:
+            return Response(
+                {"error": "code 參數是必填的"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if email:
+            try:
+                validate_email(email)
+            except ValidationError:
+                return Response(
+                    {"error": "email 格式無效"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if user.email and user.email.lower() == email.lower():
+                return Response(
+                    {"error": "新 email 不能與目前的 email 相同"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if User.objects.filter(email__iexact=email).exclude(id=user.id).exists():
+                return Response(
+                    {"error": "此 email 已被使用"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            cache_data = get_update_otp(user.id, "EMAIL", email.lower())
+            if not cache_data:
+                return Response(
+                    {"error": "未找到有效的驗證碼，請重新發送"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if (
+                cache_data.get("expires_at")
+                and cache_data["expires_at"] < timezone.now()
+            ):
+                clear_update_otp(user.id, "EMAIL", email.lower())
+                return Response(
+                    {"error": "驗證碼已過期，請重新發送"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if cache_data.get("code") != code:
+                cache_data["failed_attempts"] = cache_data.get("failed_attempts", 0) + 1
+                expires_at = cache_data.get("expires_at")
+                ttl_seconds = (
+                    max(1, int((expires_at - timezone.now()).total_seconds()))
+                    if expires_at
+                    else UPDATE_OTP_TIMEOUT
+                )
+                cache.set(
+                    get_update_otp_cache_key(user.id, "EMAIL", email.lower()),
+                    cache_data,
+                    ttl_seconds,
+                )
+                if cache_data["failed_attempts"] >= 5:
+                    clear_update_otp(user.id, "EMAIL", email.lower())
+                    return Response(
+                        {"error": "驗證失敗次數過多，請重新發送驗證碼"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                return Response(
+                    {
+                        "error": f"驗證碼錯誤，還剩 {5 - cache_data['failed_attempts']} 次機會"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user.email = email
+            user.email_verified = True
+            user.save(update_fields=["email", "email_verified"])
+            clear_update_otp(user.id, "EMAIL", email.lower())
+
+            return Response(
+                {
+                    "updated": True,
+                    "message": "Email 更新成功",
+                    "email": user.email,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        cleaned_phone = re.sub(r"[^\d+]", "", phone_number)
+        if not cleaned_phone or len(cleaned_phone) < 8:
+            return Response(
+                {"error": "手機號碼格式無效"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user.phone_number and user.phone_number == cleaned_phone:
+            return Response(
+                {"error": "新手機號碼不能與目前的手機號碼相同"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(phone_number=cleaned_phone).exclude(id=user.id).exists():
+            return Response(
+                {"error": "此手機號碼已被使用"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cache_data = get_update_otp(user.id, "SMS", cleaned_phone)
+        if not cache_data:
+            return Response(
+                {"error": "未找到有效的驗證碼，請重新發送"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if cache_data.get("expires_at") and cache_data["expires_at"] < timezone.now():
+            clear_update_otp(user.id, "SMS", cleaned_phone)
+            return Response(
+                {"error": "驗證碼已過期，請重新發送"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if cache_data.get("code") != code:
+            cache_data["failed_attempts"] = cache_data.get("failed_attempts", 0) + 1
+            expires_at = cache_data.get("expires_at")
+            ttl_seconds = (
+                max(1, int((expires_at - timezone.now()).total_seconds()))
+                if expires_at
+                else UPDATE_OTP_TIMEOUT
+            )
+            cache.set(
+                get_update_otp_cache_key(user.id, "SMS", cleaned_phone),
+                cache_data,
+                ttl_seconds,
+            )
+            if cache_data["failed_attempts"] >= 5:
+                clear_update_otp(user.id, "SMS", cleaned_phone)
+                return Response(
+                    {"error": "驗證失敗次數過多，請重新發送驗證碼"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {
+                    "error": f"驗證碼錯誤，還剩 {5 - cache_data['failed_attempts']} 次機會"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.phone_number = cleaned_phone
+        user.phone_number_verified = True
+        user.save(update_fields=["phone_number", "phone_number_verified"])
+        clear_update_otp(user.id, "SMS", cleaned_phone)
+
+        return Response(
+            {
+                "updated": True,
+                "message": "手機號碼更新成功",
+                "phone_number": user.phone_number,
+            },
+            status=status.HTTP_200_OK,
+        )
