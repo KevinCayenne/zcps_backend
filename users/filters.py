@@ -39,6 +39,7 @@ class UserFilterSet(django_filters.FilterSet):
     last_name = django_filters.CharFilter(lookup_expr="icontains")
     username = django_filters.CharFilter(lookup_expr="icontains")
     email = django_filters.CharFilter(lookup_expr="icontains")
+    phone_number = django_filters.CharFilter(lookup_expr="icontains")
 
     # Boolean field - exact match
     is_active = django_filters.BooleanFilter()
@@ -121,4 +122,5 @@ class UserFilterSet(django_filters.FilterSet):
             "updated_at",
             "clinic",
             "clinic_id",
+            "phone_number",
         ]
