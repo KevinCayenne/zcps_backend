@@ -43,7 +43,7 @@ from users.jwt_views import (
     CustomTokenRefreshView,
     CustomTokenVerifyView,
 )
-from scheduler.views import TaskViewSet, ExecutorView
+from scheduler.views import TaskViewSet, ExecutorView, MonthlyRegistrationSmsView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -164,6 +164,11 @@ urlpatterns = [
         "api/scheduler/execute_tasks/",
         ExecutorView.as_view(),
         name="scheduler-execute-tasks",
+    ),
+    path(
+        "api/scheduler/send-registration-monthly-sms/",
+        MonthlyRegistrationSmsView.as_view(),
+        name="scheduler-send-registration-monthly-sms",
     ),
 ]
 
