@@ -34,16 +34,8 @@ class NotificationTask(BaseModel):
 
     def clean(self):
         super().clean()
-        if self.period:
-            if not croniter.is_valid(self.period):
-                raise ValidationError({"period": _("Invalid cron expression")})
+        if self.period and not croniter.is_valid(self.period):
+            raise ValidationError({"period": _("Invalid cron expression")})
 
-            if self.start_time and not croniter.match(self.period, self.start_time):
-                raise ValidationError(
-                    {"start_time": _("Start time must match the cron period")}
-                )
-
-            if self.end_time and not croniter.match(self.period, self.end_time):
-                raise ValidationError(
-                    {"end_time": _("End time must match the cron period")}
-                )
+        if self.start_time and self.end_time and self.start_time > self.end_time:
+            raise ValidationError({"end_time": _("End time must be after start time")})
