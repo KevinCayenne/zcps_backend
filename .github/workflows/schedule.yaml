@@ -5,7 +5,7 @@ on:
     # Run every 30 minutes
     - cron: "*/30 * * * *"
     # Run daily
-    - cron: "0 1 * * *"
+    - cron: "0 17 * * *"
 
 jobs:
   scheduler-notification-task:
@@ -23,7 +23,7 @@ jobs:
   scheduler-monthly-registration-sms:
     runs-on: ubuntu-latest
     # Run daily to check users registered one month ago
-    if: github.event.schedule == '0 1 * * *'
+    if: github.event.schedule == '0 17 * * *'
 
     steps:
       - name: Monthly Registration SMS
