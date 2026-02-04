@@ -24,6 +24,7 @@ class NotificationTaskSerializer(serializers.ModelSerializer):
             "name",
             "enable",
             "period",
+            "roles",
             "start_time",
             "end_time",
             "contents",
