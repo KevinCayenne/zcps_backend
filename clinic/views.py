@@ -3059,6 +3059,36 @@ class GetCertificateView(APIView):
             cert_id=cert_id, cert_hash=cert_hash
         )
 
+        # 成功取得證書時，檢查證書所屬群組是否與當前用戶的 cert_record_group_id 相同
+        # 超級管理者、系統管理者權限除外，可查看任意證書
+        if status_code == status.HTTP_200_OK and isinstance(response_data, dict):
+            if getattr(user, "role", None) not in (
+                UserRole.SUPER_ADMIN,
+                UserRole.ADMIN,
+                UserRole.CLINIC_ADMIN,
+            ):
+                content = response_data.get("content")
+                if isinstance(content, dict):
+                    cert_group_id = (
+                        response_data.get("certRecordGroupId")
+                        or response_data.get("certificateGroupId")
+                        or content.get("certRecordGroupId")
+                        or content.get("certificateGroupId")
+                    )
+                    if cert_group_id is not None:
+                        try:
+                            cert_group_id = int(cert_group_id)
+                        except (TypeError, ValueError):
+                            cert_group_id = None
+                    if (
+                        cert_group_id is not None
+                        and cert_group_id != user.cert_record_group_id
+                    ):
+                        return Response(
+                            {"error": "此證書不屬於您的群組，無法查看"},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
         return Response(response_data, status=status_code)
 
 
