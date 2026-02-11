@@ -8,8 +8,6 @@ on:
 jobs:
   scheduler-notification-task:
     runs-on: ubuntu-latest
-    # Run every 30 minutes (minimum interval for GitHub Actions)
-    if: github.event.schedule == '*/30 * * * *'
 
     steps:
       - name: Scheduler Notification Task
